@@ -1,0 +1,29 @@
+# MCP Optional Dependencies
+# Additional packages for enhanced functionality
+
+# Plotting and visualization
+matplotlib>=3.3.0
+seaborn>=0.11.0
+
+# Jupyter notebook support
+jupyter>=1.0.0
+ipykernel>=6.0.0
+
+# Development and testing
+pytest>=6.0.0
+pytest-cov>=2.10.0
+
+# Documentation
+sphinx>=4.0.0
+sphinx-rtd-theme>=0.5.0
+
+# Code quality
+black>=21.0.0
+flake8>=3.9.0
+mypy>=0.910
+
+# Additional utilities
+pyyaml>=5.4.0
+
+# Excel integration (commercial license required)
+# pyxll>=5.0.0  # Uncomment if you have PyXLL license

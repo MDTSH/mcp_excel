@@ -1,0 +1,21 @@
+# MCP Python Dependencies - Minimal Requirements
+# Only essential packages for MCP to function
+
+# Core numerical computing (required by MCP)
+numpy>=1.19.0
+pandas>=1.3.0
+
+# HTTP requests (required for server functions)
+requests>=2.25.0
+
+# Date handling (required for calendar functions)
+python-dateutil>=2.8.0
+
+# Excel integration (commercial license required)
+# pyxll>=5.0.0  # Uncomment if you have PyXLL license
+
+# Optional packages (uncomment if needed)
+# matplotlib>=3.3.0  # For plotting
+# seaborn>=0.11.0    # For advanced plotting
+# jupyter>=1.0.0     # For Jupyter notebooks
+# pyyaml>=5.4.0      # For YAML configuration files
