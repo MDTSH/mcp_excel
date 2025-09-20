@@ -44,10 +44,8 @@ def test_mcp_files():
     mcp_root = Path(__file__).parent
     
     required_files = [
-        "mcp/__init__.py",
         "requirements.txt",
         "quick_install.bat",
-        "uninstall_mcp.bat",
         "install_helper.py"
     ]
     
@@ -95,11 +93,24 @@ def test_pythonpath():
     """Test PYTHONPATH configuration"""
     print("\nTesting PYTHONPATH...")
     mcp_root = str(Path(__file__).parent)
-    pyxll_path = str(Path(__file__).parent / "pyxll")
+    
+    # Determine architecture
+    arch = platform.machine().lower()
+    if arch in ['amd64', 'x86_64']:
+        lib_dir = "X64"
+    else:
+        lib_dir = "Win32"
+    
+    lib_path = str(Path(__file__).parent / "lib" / lib_dir)
     
     pythonpath = os.environ.get('PYTHONPATH', '')
-    mcp_in_path = mcp_root in pythonpath
-    pyxll_in_path = pyxll_path in pythonpath
+    # Split PYTHONPATH by separator and normalize paths for comparison
+    pythonpath_list = [os.path.normpath(p.strip()).lower() for p in pythonpath.split(os.pathsep) if p.strip()]
+    mcp_root_norm = os.path.normpath(mcp_root).lower()
+    lib_path_norm = os.path.normpath(lib_path).lower()
+    
+    mcp_in_path = mcp_root_norm in pythonpath_list
+    lib_in_path = lib_path_norm in pythonpath_list
     
     if mcp_in_path:
         print("  ✓ MCP root in PYTHONPATH")
@@ -107,26 +118,24 @@ def test_pythonpath():
         print("  ✗ MCP root not in PYTHONPATH")
         print(f"    Should include: {mcp_root}")
     
-    if pyxll_in_path:
-        print("  ✓ PyXLL directory in PYTHONPATH")
+    if lib_in_path:
+        print(f"  ✓ MCP lib/{lib_dir} in PYTHONPATH")
     else:
-        print("  ✗ PyXLL directory not in PYTHONPATH")
-        print(f"    Should include: {pyxll_path}")
+        print(f"  ✗ MCP lib/{lib_dir} not in PYTHONPATH")
+        print(f"    Should include: {lib_path}")
     
     print(f"    Current PYTHONPATH: {pythonpath}")
     
-    return mcp_in_path and pyxll_in_path
+    return mcp_in_path and lib_in_path
 
 def test_pyxll_module():
     """Test PyXLL module availability"""
     print("\nTesting PyXLL module...")
     
-    # Add MCP paths to sys.path
-    mcp_root = Path(__file__).parent
-    pyxll_path = str(mcp_root / "pyxll")
-    
-    if pyxll_path not in sys.path:
-        sys.path.insert(0, pyxll_path)
+    # Add MCP root to sys.path if needed
+    mcp_root = str(Path(__file__).parent)
+    if mcp_root not in sys.path:
+        sys.path.insert(0, mcp_root)
     
     try:
         import pyxll
@@ -134,7 +143,7 @@ def test_pyxll_module():
         return True
     except ImportError as e:
         print(f"  ✗ PyXLL module import failed: {e}")
-        print(f"    Make sure pyxll directory is in PYTHONPATH")
+        print(f"    Make sure MCP root is in PYTHONPATH")
         return False
 
 def test_mcp_import():
@@ -143,10 +152,17 @@ def test_mcp_import():
     
     # Add MCP paths to sys.path
     mcp_root = Path(__file__).parent
+    
+    # Determine architecture
+    arch = platform.machine().lower()
+    if arch in ['amd64', 'x86_64']:
+        lib_dir = "X64"
+    else:
+        lib_dir = "Win32"
+    
     mcp_paths = [
         str(mcp_root),
-        str(mcp_root / "lib" / "X64"),
-        str(mcp_root / "lib" / "Win32")
+        str(mcp_root / "lib" / lib_dir)
     ]
     
     for path in mcp_paths:

@@ -24,21 +24,16 @@ This document describes the automated installation scripts for the MCP (Mathema 
 quick_install.bat
 ```
 
-### 3. `uninstall_mcp.bat` - Uninstallation Script
+### 3. Manual Uninstallation
 **Purpose**: Complete removal of MCP installation
 
-**Features**:
-- ✅ Removes MCP paths from PYTHONPATH
-- ✅ Removes PyXLL add-in from Excel
-- ✅ Removes desktop shortcuts
-- ✅ Restores pyxll.cfg backups
-- ✅ Optional file deletion
-- ✅ Confirmation prompts for safety
+**Manual Steps**:
+- Remove MCP paths from PYTHONPATH environment variable
+- Remove PyXLL add-in from Excel Add-ins
+- Delete MCP installation directory
+- Clean up temporary files if any
 
-**Usage**:
-```cmd
-uninstall_mcp.bat
-```
+**Note**: No automated uninstall script is provided. Follow manual removal steps as needed.
 
 ### 4. `install_helper.py` - Python Installation Helper
 **Purpose**: Python-based installation logic with advanced features
@@ -198,9 +193,9 @@ Overall: 6/6 tests passed
 ## 🔄 Uninstallation
 
 To completely remove MCP:
-```cmd
-uninstall_mcp.bat
-```
+1. Remove MCP paths from PYTHONPATH environment variable
+2. Remove PyXLL add-in from Excel
+3. Delete MCP installation directory manually
 
 This will:
 - Remove all MCP paths from PYTHONPATH

@@ -160,7 +160,8 @@ python example\calendar\quickstart.py
 To remove MCP completely:
 
 ```cmd
-uninstall_mcp.bat
+# Manual uninstallation - remove PYTHONPATH entries and delete MCP directory
+# No automated uninstall script is provided
 ```
 
 This will:
@@ -214,7 +215,6 @@ After installation, your MCP directory should look like this:
 ```
 mcp-python/
 ├── quick_install.bat        # Main installation script
-├── uninstall_mcp.bat        # Uninstallation script
 ├── install_helper.py        # Python installation helper
 ├── requirements.txt         # Python dependencies
 ├── mcp/                     # Core MCP library

@@ -2104,7 +2104,7 @@ class MYieldCurve(_object):
     def DiscountFactor(self, *args):
         return _mcp.MYieldCurve_DiscountFactor(self, *args)
 
-    def ForwardRate(self, startDate, endDate, dayCounter, compounding, frequency):
+    def ForwardRate(self, startDate, endDate, dayCounter=1, compounding=True, frequency=1):
         return _mcp.MYieldCurve_ForwardRate(self, startDate, endDate, dayCounter, compounding, frequency)
 
     def GetRefDate(self):
