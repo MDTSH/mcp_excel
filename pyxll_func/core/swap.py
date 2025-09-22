@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-利率互换核心模块（Excel/PyXLL UDF 导出）
+Interest Rate Swap Core Module (Excel/PyXLL UDF Export)
 
-提供利率互换相关的 Excel 函数，包括：
-- 香草利率互换定价
-- 跨货币互换定价
-- 互换现金流分析
-- 互换风险指标计算
-- Swaption / CapFloor / CapletFloorlet 构造与风险指标
+Provides Excel functions related to interest rate swaps, including:
+- Vanilla interest rate swap pricing
+- Cross-currency swap pricing
+- Swap cash flow analysis
+- Swap risk metrics calculation
+- Swaption / CapFloor / CapletFloorlet construction and risk metrics
 """
 
 # =========================
-# 标准库
+# Standard Library
 # =========================
 import datetime
 import json
@@ -19,7 +19,7 @@ import logging
 from typing import Any, Dict, List, Optional, Union
 
 # =========================
-# 第三方库（PyXLL）
+# Third Party Library (PyXLL)
 # =========================
 from pyxll import RTD, xl_arg, xl_func, xl_return
 

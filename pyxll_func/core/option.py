@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-期权定价核心模块
+Option Pricing Core Module
 
-提供期权相关的Excel函数，包括：
-- 香草期权定价
-- 期权价格计算
-- 期权希腊字母计算
-- 期权波动率计算
+Provides Excel functions related to options, including:
+- Vanilla option pricing
+- Option price calculation
+- Option Greeks calculation
+- Option volatility calculation
 """
 
 import json
@@ -36,18 +36,18 @@ from mcp.wrapper import McpForwardCurveImpliedFwdPoints, McpForwardCurveForward2
 @xl_arg("fmt", "str")
 def McpVanillaOption(args1, args2, args3, args4, args5, fmt='VP'):
     """
-    创建香草期权对象
+    Create vanilla option object
     
-    参数:
-        args1: 参数数组1
-        args2: 参数数组2
-        args3: 参数数组3
-        args4: 参数数组4
-        args5: 参数数组5
-        fmt: 格式化字符串，默认为'VP'
+    Parameters:
+        args1: Parameter array 1
+        args2: Parameter array 2
+        args3: Parameter array 3
+        args4: Parameter array 4
+        args5: Parameter array 5
+        fmt: Format string, default is 'VP'
         
-    返回:
-        object: 香草期权对象，如果创建失败则返回错误信息
+    Returns:
+        object: Vanilla option object, returns error message if creation fails
     """
     args = [args1, args2, args3, args4, args5, fmt]
     try:
@@ -66,16 +66,16 @@ def McpVanillaOption(args1, args2, args3, args4, args5, fmt='VP'):
 @xl_arg("pricingMethod", "var")
 def McpPricesFromStrikes(obj, strikes, fmt="V", pricingMethod=None):
     """
-    根据执行价格计算期权价格
+    Calculate option prices based on strike prices
     
-    参数:
-        obj: 期权对象
-        strikes: 执行价格数组
-        fmt: 格式化方式，默认为"V"
-        pricingMethod: 定价方法，可选
+    Parameters:
+        obj: Option object
+        strikes: Strike price array
+        fmt: Format method, default is "V"
+        pricingMethod: Pricing method, optional
         
-    返回:
-        array: 期权价格数组
+    Returns:
+        array: Option price array
     """
     if pricingMethod is None:
         prices = obj.prices_from_strikes(strikes)
@@ -199,7 +199,7 @@ def McpForwardDelta(obj, isCcy2=True, isAmount=True):
     return obj.ForwardDelta(isCcy2, isAmount)
 
 
-# isAmount作为参数
+# isAmount as parameter
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("obj", "object")
 @xl_arg("isAmount", "bool")
@@ -390,7 +390,7 @@ def VOVolImpliedFromPrice(obj, price):
     try:
         return tool_def.xls_call(*args, key='McpVanillaOption', method='VolImpliedFromPrice')
     except Exception as e:
-        # 捕获异常类型和描述
+        # Capture exception type and description
         error_message = f"{type(e).__name__}: {str(e)}"
         logging.warning(f"VOVolImpliedFromPrice exception: {args}. Error: {error_message}", exc_info=True)
         return error_message
@@ -402,7 +402,7 @@ def VOStrikeImpliedFromPrice(obj, price, isAmount=True):
     try:
         return tool_def.xls_call(*args, key='McpVanillaOption', method='StrikeImpliedFromPrice')
     except Exception as e:
-        # 捕获异常类型和描述
+        # Capture exception type and description
         error_message = f"{type(e).__name__}: {str(e)}"
         logging.warning(f"VOStrikeImpliedFromPrice exception: {args}. Error: {error_message}", exc_info=True)
         return error_message
@@ -414,7 +414,7 @@ def VODeltaImpliedFromStrike(obj, strike):
     try:
         return tool_def.xls_call(*args, key='McpVanillaOption', method='DeltaImpliedFromStrike')
     except Exception as e:
-        # 捕获异常类型和描述
+        # Capture exception type and description
         error_message = f"{type(e).__name__}: {str(e)}"
         logging.warning(f"VODeltaImpliedFromStrike exception: {args}. Error: {error_message}", exc_info=True)
         return error_message
@@ -426,7 +426,7 @@ def VOStrikeImpliedFromDelta(obj, delta, deltaRHS=True, isAmount=True):
     try:
         return tool_def.xls_call(*args, key='McpVanillaOption', method='StrikeImpliedFromDelta')
     except Exception as e:
-        # 捕获异常类型和描述
+        # Capture exception type and description
         error_message = f"{type(e).__name__}: {str(e)}"
         logging.warning(f"VOStrikeImpliedFromDelta exception: {args}. Error: {error_message}", exc_info=True)
         return error_message
@@ -438,7 +438,7 @@ def VOStrikeImpliedFromForwardDelta(obj, delta, deltaRHS=True, isAmount=True):
     try:
         return tool_def.xls_call(*args, key='McpVanillaOption', method='StrikeImpliedFromForwardDelta')
     except Exception as e:
-        # 捕获异常类型和描述
+        # Capture exception type and description
         error_message = f"{type(e).__name__}: {str(e)}"
         logging.warning(f"VOStrikeImpliedFromDelta exception: {args}. Error: {error_message}", exc_info=True)
         return error_message
@@ -594,7 +594,7 @@ def McpRange(spot, rg=0.03, count=30, fmt="V"):
 @xl_arg('spotDate', 'datetime')
 @xl_arg('deliveryDate', 'datetime')
 def Forward2ImpliedBaseRate(pair, forward, spot, termRate, spotDate, deliveryDate):
-    # 检查参数是否为空
+    # Check if parameters are empty
     if pair is None or forward is None or spot is None or termRate is None or spotDate is None or deliveryDate is None:
         raise ValueError("no enough parameters!")
     return McpForwardCurveForward2ImpliedBaseRate(pair, forward, spot, termRate, spotDate.strftime("%Y/%m/%d"),
@@ -609,7 +609,7 @@ def Forward2ImpliedBaseRate(pair, forward, spot, termRate, spotDate, deliveryDat
 @xl_arg('spotDate', 'datetime')
 @xl_arg('deliveryDate', 'datetime')
 def Forward2ImpliedTermRate(pair, forward, spot, baseRate, spotDate, deliveryDate):
-    # 检查参数是否为空
+    # Check if parameters are empty
     if pair is None or forward is None or spot is None or baseRate is None or spotDate is None or deliveryDate is None:
         raise ValueError("no enough parameters!")
     return McpForwardCurveForward2ImpliedTermRate(pair, forward, spot, baseRate, spotDate.strftime("%Y/%m/%d"),
@@ -624,7 +624,7 @@ def Forward2ImpliedTermRate(pair, forward, spot, baseRate, spotDate, deliveryDat
 @xl_arg('spotDate', 'datetime')
 @xl_arg('deliveryDate', 'datetime')
 def ImpliedForward(pair, baseRate, termRate, spot, spotDate, deliveryDate):
-    # 检查参数是否为空
+    # Check if parameters are empty
     if pair is None or baseRate is None or spot is None or termRate is None or spotDate is None or deliveryDate is None:
         raise ValueError("no enough parameters!")
     return McpForwardCurveImpliedForward(pair, baseRate, termRate, spot, spotDate.strftime("%Y/%m/%d"),
@@ -639,7 +639,7 @@ def ImpliedForward(pair, baseRate, termRate, spot, spotDate, deliveryDate):
 @xl_arg('spotDate', 'datetime')
 @xl_arg('deliveryDate', 'datetime')
 def ImpliedFwdPoints(pair, baseRate, termRate, spot, spotDate, deliveryDate):
-    # 检查参数是否为空
+    # Check if parameters are empty
     if pair is None or baseRate is None or spot is None or termRate is None or spotDate is None or deliveryDate is None:
         raise ValueError("no enough parameters!")
     return McpForwardCurveImpliedFwdPoints(pair, baseRate, termRate, spot, spotDate.strftime("%Y/%m/%d"),

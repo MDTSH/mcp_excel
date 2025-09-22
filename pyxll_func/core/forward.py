@@ -823,7 +823,7 @@ def McpBatchCalcPrice(obj, tenor, strike_px):
     return obj.calc_price(tenor, strike_px)
 
 
-"""不确定"""
+"""Uncertain"""
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("args", "var[][]")
 def McpMktData(args):

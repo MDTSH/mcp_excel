@@ -305,14 +305,11 @@ mcp-python/
 │   └── yield_curve/              # Yield curve examples
 ├── pyxll_func/                   # Excel add-in pyxll functions
 │   ├── core/                     # Core MCP functions
-│   └──  X64/                     # Any customzation functions be here!
-├── excel/                        # Excel templates and examples
-│   ├── en/                       # English Version excel and docs
-│   └── zh/                       # Chinese Version excel and docs
-├── pyxll_func/                   # Excel add-in pyxll functions
-│   ├── core/                     # Core MCP functions
 │   └── custom/                   # Any customzation functions be here!
-└── pyxll_func/                   # Excel add-in functions
+└── excel/                        # Excel templates and examples
+    ├── en/                       # English Version excel and docs
+    └── zh/                       # Chinese Version excel and docs
+
 
 ```
 

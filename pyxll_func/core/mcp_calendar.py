@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 
 """
-通用工具 & 日历相关 PyXLL UDF 模块
+General Utilities & Calendar-related PyXLL UDF Module
 
-包含：
-- 版本与日期工具函数：McpVersion/McpToday/McpTimeTo
-- 日历对象构造：McpCalendar/McpNCalendar/McpFCalendar
-- 日历运算：AddBusinessDays/Adjust/AddPeriod/.../IsBusinessDay/FXO日期辅助
-- 日计数法与期限运算：McpDayCounter/DayCounterYearFraction/McpCalTerm
-- Schedule 对象构造与导出：McpSchedule/ScheduleDates/ScheduleAsTimes
+Contains:
+- Version and date utility functions: McpVersion/McpToday/McpTimeTo
+- Calendar object construction: McpCalendar/McpNCalendar/McpFCalendar
+- Calendar operations: AddBusinessDays/Adjust/AddPeriod/.../IsBusinessDay/FXO date helpers
+- Day count conventions & period calculations: McpDayCounter/DayCounterYearFraction/McpCalTerm
+- Schedule object construction & export: McpSchedule/ScheduleDates/ScheduleAsTimes
 """
 
 # =========================
-# 标准库
+# Standard Library
 # =========================
 import datetime
 import json
@@ -21,26 +21,26 @@ import os
 import re
 from typing import Any, List, Tuple
 
-# tkinter 仅在本地弹窗输入账号密码时需要；通常服务器环境没有 GUI，谨慎使用
+# tkinter only needed for local popup input of username/password; usually server environments don't have GUI, use with caution
 try:
     import tkinter as tk  # noqa: F401
 except Exception:
-    tk = None  # 无 GUI 环境时禁用
+    tk = None  # Disable in non-GUI environments
 
 # =========================
-# 第三方
+# Third Party
 # =========================
 import pandas as pd
 from pyxll import RTD, xl_arg, xl_app, xl_func, xl_return, xlfCaller  # noqa: F401
 
 # =========================
-# 项目内
+# Project Internal
 # =========================
 import mcp.mcp
 import mcp.wrapper
-import mcp.xscript.utils as xsutils  # noqa: F401 可能被外部调用/间接使用
-from mcp.forward.compound import payoff_generate_spots  # noqa: F401 预留
-from mcp.mcp import MDateFuntion  # noqa: F401 预留（如需开放 MDateFunction）
+import mcp.xscript.utils as xsutils  # noqa: F401 May be called externally/indirectly used
+from mcp.forward.compound import payoff_generate_spots  # noqa: F401 Reserved
+from mcp.mcp import MDateFuntion  # noqa: F401 Reserved (if MDateFunction needs to be exposed)
 from mcp.tool.args_def import tool_def
 from mcp.utils.enums import DateAdjusterRule, enum_wrapper
 from mcp.utils.excel_utils import pf_date
@@ -48,17 +48,17 @@ from mcp.utils.mcp_utils import mcp_dt, parse_excel_date
 
 
 # =========================
-# 全局日志
+# Global Logger
 # =========================
 root_logger = logging.getLogger()
 print(f"root_logger.level={root_logger.level}")
 
 
 # =========================
-# 工具函数
+# Utility Functions
 # =========================
 def is_valid_datetime(dt: datetime.datetime) -> bool:
-    """检查时间是否在 Excel/常用可表示范围内"""
+    """Check if time is within Excel/commonly representable range"""
     min_date = datetime.datetime(1900, 1, 1)
     max_date = datetime.datetime(9999, 12, 31)
     return min_date <= dt <= max_date
@@ -91,17 +91,17 @@ def date_list_to_string(dates):
 
 
 # =========================
-# 版本 & 时间
+# Version & Time
 # =========================
 @xl_func(macro=False, recalc_on_open=True)
 def McpVersion():
-    """返回 MCP 版本号"""
+    """Return MCP version number"""
     return mcp.mcp.MMCP().McpVersion()
 
 
 @xl_func(macro=False, recalc_on_open=True)
 def McpToday():
-    """返回当前时间（Excel 可识别的 datetime）"""
+    """Return current time (Excel recognizable datetime)"""
     root_logger = logging.getLogger()
     print(f"root_logger.level={root_logger.level}")
     return datetime.datetime.now()
@@ -112,7 +112,7 @@ def McpToday():
 @xl_arg("end", "datetime")
 @xl_arg("days", "int")
 def McpTimeTo(start, end, days):
-    """返回 (end - start) 以 days 为基的年化时间长度，例如 days=365"""
+    """Return (end - start) annualized time length based on days, e.g. days=365"""
     if days is None or days == 0:
         days = 365
     td: datetime.timedelta = end - start
@@ -121,19 +121,19 @@ def McpTimeTo(start, end, days):
 
 @xl_func(macro=False, recalc_on_open=True)
 def McpAdjustmentTable():
-    """返回用于工作日调整规则的表对象"""
+    """Return table object for business day adjustment rules"""
     return mcp.mcp.MAdjustmentTable()
 
 
 # =========================
-# 日历对象构造
+# Calendar Object Construction
 # =========================
 @xl_func("str code, datetime[] dates: object", macro=False, recalc_on_open=True)
 def McpCalendar(code, dates):
     """
-    根据代码与额外节假日构造日历对象。
+    Construct calendar object based on code and additional holidays.
     dates:
-      - None 或 只有一个 1899-12-31 视为无附加节假日
+      - None or only one 1899-12-31 is treated as no additional holidays
     """
     if dates is None:
         date_str = ""

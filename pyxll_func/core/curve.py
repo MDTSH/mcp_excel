@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-收益率曲线核心模块
+Yield Curve Core Module
 
-提供收益率曲线相关的 Excel 函数，包括：
-- 收益率曲线构建和插值
-- 远期利率计算
-- 零息利率计算
-- 曲线数据格式化
+Provides Excel functions related to yield curves, including:
+- Yield curve construction and interpolation
+- Forward rate calculation
+- Zero rate calculation
+- Curve data formatting
 """
 
 # =========================
-# 标准库
+# Standard Library
 # =========================
 import datetime
 import json
@@ -18,12 +18,12 @@ import logging
 from typing import Any, Dict, List, Optional, Union
 
 # =========================
-# 第三方
+# Third Party
 # =========================
 from pyxll import xl_arg, xl_func
 
 # =========================
-# 项目内
+# Project Internal
 # =========================
 from mcp import mcp
 from mcp.utils.enums import DayCounter, Frequency, enum_wrapper
@@ -31,9 +31,9 @@ from mcp.utils.excel_utils import (
     MethodName,
     mcp_kv_wrapper,
     mcp_method_args_cache,
-    pf_mcp_date_list,  # noqa: F401 可能在模板中使用
+    pf_mcp_date_list,  # noqa: F401 May be used in templates
 )
-from mcp.mcp import MVanillaSwap  # noqa: F401 预留
+from mcp.mcp import MVanillaSwap  # noqa: F401 Reserved
 from mcp.utils.mcp_utils import mcp_dt
 from mcp.tool.args_def import tool_def
 from mcp.wrapper import McpSwapCurve, trace_args
@@ -42,14 +42,14 @@ import mcp.wrapper
 
 
 # =========================
-# 工具函数
+# Utility Functions
 # =========================
 def fmt_dt_array(dts):
     """
-    格式化日期数组到 [["YYYYMMDD"...], ["YYYYMMDD"...]] 形式。
-    支持两种输入：
-    - 长度为 2 的二维数组（两列），直接逐列格式化
-    - 任意长度的日期对数组（每项是 [start, end]）
+    Format date array to [["YYYYMMDD"...], ["YYYYMMDD"...]] format.
+    Supports two types of input:
+    - 2D array of length 2 (two columns), format each column directly
+    - Date pair array of arbitrary length (each item is [start, end])
     """
     result = []
     if len(dts) == 2:
@@ -67,7 +67,7 @@ def fmt_dt_array(dts):
 
 
 # =========================
-# Overnight / Bill / BillFuture 曲线数据
+# Overnight / Bill / BillFuture Curve Data
 # =========================
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("args1", "var[][]")
@@ -227,7 +227,7 @@ def McpFixedRateBondCurveData(args1, args2, args3, args4, args5, fmt='VP|HD'):
         return s
 
 # =========================
-# Swap 曲线数据（统一入口）
+# Swap Curve Data (Unified Entry)
 # =========================
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("args1", "var[][]")
@@ -246,7 +246,7 @@ def McpVanillaSwapCurveData(args1, args2, args3, args4, args5, fmt="VP"):
 
 
 # =========================
-# Rate Convention & 读取参数
+# Rate Convention & Parameter Reading
 # =========================
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("conventionName", "str")

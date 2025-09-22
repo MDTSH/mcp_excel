@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-债券定价核心模块
+Bond Pricing Core Module
 
-提供固定利率债券相关的Excel函数，包括：
-- 债券应计利息计算
-- 债券现金流分析
-- 债券定价和收益率计算
-- 债券风险指标计算
+Provides Excel functions related to fixed rate bonds, including:
+- Bond accrued interest calculation
+- Bond cash flow analysis
+- Bond pricing and yield calculation
+- Bond risk metrics calculation
 """
 
 import datetime
@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from pyxll import xl_func, xl_arg, xl_return, RTD
 
-# 简化的导入，避免循环依赖
+# Simplified imports to avoid circular dependencies
 try:
     from mcp import mcp
     from mcp.utils.async_func import async_func_manager, ThreadFuncRtd
@@ -25,17 +25,17 @@ try:
     from mcp.utils.mcp_utils import *
     from mcp.tool.args_def import tool_def
 except ImportError:
-    # 如果导入失败，创建空的占位符
+    # If import fails, create empty placeholders
     mcp = None
     async_func_manager = None
     ThreadFuncRtd = None
     tool_def = None
 
 class MFixedRateBond:
-    """固定利率债券类"""
+    """Fixed rate bond class"""
     
     def __init__(self, *args):
-        """初始化固定利率债券对象"""
+        """Initialize fixed rate bond object"""
         if mcp:
             super().__init__(*args)
             self.maturity_date = args[2] if len(args) > 2 else None
@@ -45,13 +45,13 @@ class MFixedRateBond:
 @xl_arg("bond", "object")
 def FrbAccruedInterestCHN(bond):
     """
-    计算固定利率债券的中国式应计利息
+    Calculate accrued interest for fixed rate bond in Chinese style
     
-    参数:
-        bond: 债券对象
-        
-    返回:
-        float: 应计利息金额，如果债券对象不支持则返回None
+    Parameters:
+        bond: Bond object
+    
+    Returns:
+        float: Accrued interest amount, returns None if bond object doesn't support
     """
     if hasattr(bond, 'AccruedInterestCHN'):
         return bond.AccruedInterestCHN()
@@ -62,13 +62,13 @@ def FrbAccruedInterestCHN(bond):
 @xl_arg("bond", "object")
 def FrbPreviousCouponDate(bond):
     """
-    获取固定利率债券的上一个付息日
+    Get previous coupon date for fixed rate bond
     
-    参数:
-        bond: 债券对象
+    Parameters:
+        bond: Bond object
         
-    返回:
-        datetime: 上一个付息日，如果债券对象不支持则返回None
+    Returns:
+        datetime: Previous coupon date, returns None if bond object doesn't support
     """
     if hasattr(bond, 'PreviousCouponDate'):
         return pd.to_datetime(bond.PreviousCouponDate())
@@ -79,13 +79,13 @@ def FrbPreviousCouponDate(bond):
 @xl_arg("bond", "object")
 def FrbNextCouponDate(bond):
     """
-    获取固定利率债券的下一个付息日
+    Get next coupon date for fixed rate bond
     
-    参数:
-        bond: 债券对象
+    Parameters:
+        bond: Bond object
         
-    返回:
-        datetime: 下一个付息日，如果债券对象不支持则返回None
+    Returns:
+        datetime: Next coupon date, returns None if bond object doesn't support
     """
     if hasattr(bond, 'NextCouponDate'):
         return pd.to_datetime(bond.NextCouponDate())
@@ -96,14 +96,14 @@ def FrbNextCouponDate(bond):
 @xl_arg("curve", "object")
 def FrbPrice(bond, curve):
     """
-    计算固定利率债券价格
+    Calculate fixed rate bond price
     
-    参数:
-        bond: 债券对象
-        curve: 收益率曲线对象
+    Parameters:
+        bond: Bond object
+        curve: Yield curve object
         
-    返回:
-        float: 债券价格，如果债券对象不支持则返回None
+    Returns:
+        float: Bond price, returns None if bond object doesn't support
     """
     if hasattr(bond, 'Price'):
         return bond.Price(curve)
@@ -115,14 +115,14 @@ def FrbPrice(bond, curve):
 @xl_arg("curve", "object")
 def FrbFairValue(bond, curve):
     """
-    计算固定利率债券公允价值
+    Calculate fixed rate bond fair value
     
-    参数:
-        bond: 债券对象
-        curve: 收益率曲线对象
+    Parameters:
+        bond: Bond object
+        curve: Yield curve object
         
-    返回:
-        float: 债券公允价值，如果债券对象不支持则返回None
+    Returns:
+        float: Bond fair value, returns None if bond object doesn't support
     """
     if hasattr(bond, 'FairValue'):
         return bond.FairValue(curve)
@@ -135,22 +135,22 @@ def FrbFairValue(bond, curve):
 @xl_arg("toDate", "datetime")
 def FrbActualPaidInterest(bond, fromDate, toDate):
     """
-    计算固定利率债券在指定期间内的实际付息
+    Calculate actual interest payment for fixed rate bond in specified period
     
-    参数:
-        bond: 债券对象
-        fromDate: 开始日期
-        toDate: 结束日期
+    Parameters:
+        bond: Bond object
+        fromDate: Start date
+        toDate: End date
         
-    返回:
-        float: 实际付息金额，如果债券对象不支持则返回None
+    Returns:
+        float: Actual interest amount, returns None if bond object doesn't support
     """
     if hasattr(bond, 'ActualPaidInterest'):
         return bond.ActualPaidInterest(mcp_dt.to_pure_date(fromDate), mcp_dt.to_pure_date(toDate))
     return None
 
 
-# ==================== 骑乘策略相关函数 ====================
+# ==================== Ride Strategy Related Functions ====================
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("bond", "object")
@@ -543,7 +543,7 @@ def FrbPayments(bond, fields):
         return result
     return None
 
-## 摊销计算
+## Amortization Calculation
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("bond", "object")
 @xl_arg("startDate", "datetime")
@@ -560,7 +560,7 @@ def FrbAmCost(bond, startDate, endDate, initCost):
             return s
     return None
 
-## 摊销计算，摊余成本
+## Amortization Calculation, Amortized Cost
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("bond", "object")
 @xl_arg("startDate", "datetime")
@@ -577,7 +577,7 @@ def FrbAmEIR(bond, startDate, endDate, initCost):
             return s
     return None
 
-## 摊销计算, 有效利息收入
+## Amortization Calculation, Effective Interest Income
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("bond", "object")
 @xl_arg("startDate", "datetime")
@@ -594,7 +594,7 @@ def FrbAmERInstIncome(bond, startDate, endDate, initCost):
             return s
     return None
     
-## 摊销计算, 应计利息收入
+## Amortization Calculation, Accrued Interest Income
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("bond", "object")
 @xl_arg("startDate", "datetime")
@@ -611,7 +611,7 @@ def FrbAmAccuredInstIncome(bond, startDate, endDate, initCost):
             return s
     return None
 
-## 摊销计算, 现金流
+## Amortization Calculation, Cash Flow
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("bond", "object")
 @xl_arg("startDate", "datetime")

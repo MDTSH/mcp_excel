@@ -8,13 +8,13 @@ from mcp.server_version import mcp_server
 
 from pyxll import xl_func, xl_arg
 
-# 配置服务器地址
+# Configure server addresses
 SERVER_CONFIG = {
     "primary": "https://fxo.mathema.com.cn",
     "secondary": "http://172.20.0.154:8803"
 }
 
-# 数据类型与入口映射
+# Data type and endpoint mapping
 DATA_TYPE_MAP = {
     "LocalVol": "/md/mkdata",
     "YieldCurve": "/md/fxoptiondata",
@@ -24,58 +24,58 @@ DATA_TYPE_MAP = {
 }
 
 def get_value_by_case_insensitive_key(dictionary, key):
-    # 将键都转换为小写
+    # Convert all keys to lowercase
     lowercase_keys = {k.lower(): v for k, v in dictionary.items()}
-    # 检索键对应的值
+    # Retrieve the value corresponding to the key
     return lowercase_keys.get(key.lower())
 
 def fetch_data(data_type, params=None, DataServer="",timeout=5):
     """
-    通用数据获取函数，根据数据类型动态选择入口。
+    Generic data fetching function that dynamically selects endpoints based on data type.
 
     Args:
-        data_type (str): 数据类型，例如 'LocalVol', 'YieldCurve', 'ktVolSurface2', 'DiscountRateCurve'。
-        params (dict): 请求参数。
-        timeout (int): 请求超时时间，默认 5 秒。
+        data_type (str): Data type, e.g., 'LocalVol', 'YieldCurve', 'ktVolSurface2', 'DiscountRateCurve'.
+        params (dict): Request parameters.
+        timeout (int): Request timeout, default 5 seconds.
 
     Returns:
-        dict: 返回的 JSON 数据。
+        dict: Returned JSON data.
     """
     if data_type not in DATA_TYPE_MAP:
         raise ValueError(f"Invalid data type: {data_type}. Supported types: {list(DATA_TYPE_MAP.keys())}")
 
-    # 获取数据入口
+    # Get data endpoint
     endpoint = DATA_TYPE_MAP[data_type]
 
-    # 构造完整的 URL
+    # Construct complete URL
     if (DataServer != ""):
         if not DataServer.startswith(('http://', 'https://')):
-            DataServer = 'http://' + DataServer  # 默认添加 http:// 前缀
+            DataServer = 'http://' + DataServer  # Default add http:// prefix
         url_primary = DataServer + endpoint
         url_secondary = SERVER_CONFIG["primary"] + endpoint
     else:
         url_primary = SERVER_CONFIG["primary"] + endpoint
         url_secondary = SERVER_CONFIG["secondary"] + endpoint
 
-    # 配置重试策略
+    # Configure retry strategy
     session = requests.Session()
     retries = Retry(total=2, backoff_factor=1, status_forcelist=[500, 502, 503, 504, 404])
     session.mount("https://", HTTPAdapter(max_retries=retries))
     session.mount("http://", HTTPAdapter(max_retries=retries))
 
-    # 参数检查
+    # Parameter validation
     if params is None:
         params = {}
 
-    # 尝试第一个服务器
+    # Try first server
     try:
         response = session.post(url_primary, params=params, timeout=timeout)
-        response.raise_for_status()  # 如果状态码不是 200，抛出异常
+        response.raise_for_status()  # Raise exception if status code is not 200
         return response.json()
     except (requests.HTTPError, requests.ConnectionError, requests.Timeout) as e:
         print(f"Warning: Primary server failed for {data_type}. Error: {e}")
 
-        # 尝试第二个服务器
+        # Try second server
         try:
             response = session.post(url_secondary, params=params, timeout=timeout)
             response.raise_for_status()

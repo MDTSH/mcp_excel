@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-工具函数核心模块
+Utility Functions Core Module
 
-提供通用的Excel函数，包括：
-- 字符串处理函数
-- 数组操作函数
-- 数学计算函数
-- 日期处理函数
-- 数据转换函数
+Provides common Excel functions, including:
+- String processing functions
+- Array operation functions
+- Mathematical calculation functions
+- Date processing functions
+- Data conversion functions
 """
 
 import json
@@ -29,13 +29,13 @@ from mcp_calendar import plain_date, date_to_string
 @xl_func("str: str")
 def py_uppercase(x):
     """
-    将字符串转换为大写
+    Convert string to uppercase
     
-    参数:
-        x: 输入字符串
+    Parameters:
+        x: Input string
         
-    返回:
-        str: 转换为大写的字符串
+    Returns:
+        str: String converted to uppercase
     """
     return x.upper()
 
@@ -43,41 +43,41 @@ def py_uppercase(x):
 @xl_func("var[][] values, function func: var[][]", auto_resize=True)
 def py_apply_to_range(values, func):
     """
-    对数组中的每个值应用指定函数
+    Apply specified function to each value in array
     
-    参数:
-        values: 输入数组
-        func: 要应用的函数
+    Parameters:
+        values: Input array
+        func: Function to apply
         
-    返回:
-        var[][]: 应用函数后的新数组
+    Returns:
+        var[][]: New array after applying function
     """
-    # 遍历输入数组并创建新的转换数组
+    # Iterate through input array and create new converted array
     new_array = []
     for row in values:
         new_row = []
         for value in row:
-            # 对输入数组中的每个项目调用传入的函数
+            # Call the passed function on each item in the input array
             new_value = func(value)
             new_row.append(new_value)
 
-        # 将新值行添加到新数组
+        # Add new value row to new array
         new_array.append(new_row)
 
-    # 返回的数组是对原始输入数组中的每个项目调用'func'的结果
+    # Returned array is the result of calling 'func' on each item in the original input array
     return new_array
 
 
 @xl_func(macro=False, transpose=True, auto_resize=True)
 def py_tran(x):
     """
-    转置数组
+    Transpose array
     
-    参数:
-        x: 输入数组
+    Parameters:
+        x: Input array
         
-    返回:
-        var: 转置后的数组
+    Returns:
+        var: Transposed array
     """
     return x
 
@@ -87,12 +87,12 @@ from scipy.stats import norm
 import math
 
 """
-Black 76 模型（期货欧式期权定价与隐含波动率计算）脚本
+Black 76 Model Script (Futures European Option Pricing and Implied Volatility Calculation)
 
-示例：
-    # 期权定价
+Example:
+    # Option pricing
     F, K, T, r, sigma = 100, 95, 0.5, 0.03, 0.2
-    # 隐含波动率
+    # Implied volatility
     F2, K2, T2, r2, price2, option2 = 100, 95, 0.5, 0.03, 6.5, 'call'
 """
 
@@ -103,7 +103,7 @@ def norm_cdf(x: float) -> float:
 
 def future_black76_price(F: float, K: float, T: float, r: float, sigma: float, option: str = "call") -> float:
     if T <= 0 or sigma <= 0:
-        raise ValueError("T 和 sigma 必须为正数")
+        raise ValueError("T and sigma must be positive numbers")
     sqrtT = math.sqrt(T)
     d1 = (math.log(F / K) + 0.5 * sigma**2 * T) / (sigma * sqrtT)
     d2 = d1 - sigma * sqrtT
@@ -118,14 +118,14 @@ def future_black76_price(F: float, K: float, T: float, r: float, sigma: float, o
     elif opt in ["put", "p"]:
         return df * (K * N_m_d2 - F * N_m_d1)
     else:
-        raise ValueError(f"未知的option类型: {option}")
+        raise ValueError(f"Unknown option type: {option}")
 
 def future_implied_volatility(market_price: float, F: float, K: float, T: float, r: float, option: str = "call", tol: float = 1e-6, max_iter: int = 100) -> float:
     low, high = 1e-6, 5.0
     price_low = future_black76_price(F, K, T, r, low, option)
     price_high = future_black76_price(F, K, T, r, high, option)
     if market_price < price_low or market_price > price_high:
-        raise ValueError(f"市场价格 {market_price} 超出隐含波动率搜索范围对应的价格区间 "
+        raise ValueError(f"Market price {market_price} is outside the price range corresponding to implied volatility search range "
                          f"[{price_low:.4f}, {price_high:.4f}]")
     for i in range(max_iter):
         mid = 0.5 * (low + high)
@@ -293,17 +293,17 @@ def abc():
 @xl_func
 def RMSE(actual: list, predicted: list) -> float:
     """
-    计算均方根误差 (RMSE)。
+    Calculate Root Mean Square Error (RMSE).
     
-    :param actual: 实际值列表
-    :param predicted: 预测值列表
-    :return: RMSE 值
+    :param actual: List of actual values
+    :param predicted: List of predicted values
+    :return: RMSE value
     """
-    # 转换为 NumPy 数组以处理
+    # Convert to NumPy arrays for processing
     actual = np.array(actual)
     predicted = np.array(predicted)
 
-    # 计算 RMSE
+    # Calculate RMSE
     rmse = np.sqrt(np.mean((actual - predicted) ** 2))
 
     return rmse
@@ -312,22 +312,22 @@ def RMSE(actual: list, predicted: list) -> float:
 @xl_func
 def RRMSE(actual: list, predicted: list) -> float:
     """
-    计算相对均方根误差 (RRMSE)。
+    Calculate Relative Root Mean Square Error (RRMSE).
     
-    :param actual: 实际值列表
-    :param predicted: 预测值列表
-    :return: RRMSE 值（百分比）
+    :param actual: List of actual values
+    :param predicted: List of predicted values
+    :return: RRMSE value (percentage)
     """
     actual = np.array(actual)
     predicted = np.array(predicted)
 
-    # 计算 RMSE
+    # Calculate RMSE
     rmse = np.sqrt(np.mean((actual - predicted) ** 2))
 
-    # 计算均值
+    # Calculate mean
     mean_value = np.mean(np.abs(actual))
 
-    # 计算 RRMSE
+    # Calculate RRMSE
     rrmse = (rmse / mean_value) * 100 if mean_value != 0 else np.nan
 
     return rrmse
@@ -336,19 +336,19 @@ def RRMSE(actual: list, predicted: list) -> float:
 @xl_func
 def mape(actual: list, predicted: list) -> float:
     """
-    计算平均绝对百分比误差（MAPE）。
+    Calculate Mean Absolute Percentage Error (MAPE).
     
-    :param actual: 实际值列表
-    :param predicted: 预测值列表
-    :return: MAPE 值（百分比）
+    :param actual: List of actual values
+    :param predicted: List of predicted values
+    :return: MAPE value (percentage)
     """
     actual = np.array(actual)
     predicted = np.array(predicted)
 
-    # 计算相对偏差
+    # Calculate relative deviation
     relative_deviation = np.abs(actual - predicted) / np.maximum(np.abs(actual), np.abs(predicted))
 
-    # 计算 MAPE
+    # Calculate MAPE
     mape_value = np.mean(relative_deviation) * 100 if np.any(actual != 0) else np.nan
 
     return mape_value
@@ -357,19 +357,19 @@ def mape(actual: list, predicted: list) -> float:
 @xl_func
 def average_absolute_difference(actual: list, predicted: list) -> float:
     """
-    计算两组数据差值的绝对值的平均值。
+    Calculate the average of absolute differences between two sets of data.
     
-    :param actual: 实际值列表
-    :param predicted: 预测值列表
-    :return: 差值绝对值的平均值
+    :param actual: List of actual values
+    :param predicted: List of predicted values
+    :return: Average of absolute differences
     """
     actual = np.array(actual)
     predicted = np.array(predicted)
 
-    # 计算差值的绝对值
+    # Calculate absolute differences
     absolute_differences = np.abs(actual - predicted)
 
-    # 计算平均值
+    # Calculate mean value
     average_abs_diff = np.mean(absolute_differences)
 
     return average_abs_diff

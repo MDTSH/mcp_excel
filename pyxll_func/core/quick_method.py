@@ -156,17 +156,17 @@ def McpVOStrikeFromPrice(args1, key1, val1, key2, val2, key3, val3, key4, val4, 
                                        val7, key8,
                                        val8, key9, val9, key10, val10])
     data = args_list[1]
-    # 遍历列表以查找'Price'
+    # Iterate through list to find 'Price'
     for item in data:
         if item[0].lower() == 'premium' or item[0].lower() == 'price':
             target_price = item[1]
-            break  # 找到'Price'后就不再继续循环
-        # 遍历列表以查找'Spot'
+            break  # Stop looping after finding 'Price'
+        # Iterate through list to find 'Spot'
     for item in data:
         if item[0].lower() == 'forwardpx':
             mid_price = item[1]
-            break  # 找到'Spot'后就不再继续循环
-    # 通过二分法找到strike，需要设定strike的上下限
+            break  # Stop looping after finding 'Spot'
+    # Find strike using binary search, need to set upper and lower limits for strike
     if mid_price == None:
         low = 0
         high = 100000

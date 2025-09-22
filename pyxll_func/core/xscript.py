@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
 
 """
-本模块提供复杂结构衍生品在 Excel/PyXLL 环境下的构造、定价与估值的函数封装。
-核心概念：
-- McpStructureDef: 用于定义结构化产品（如区间累计）所需的包名、结构体、日程及支付条款。
-- xScriptStructure（缩写 xss）: 复杂结构产品对象；xssXXXX 表示在该对象上的具体方法封装，供 Excel 调用。
+This module provides function wrappers for constructing, pricing, and valuing complex structured derivatives in Excel/PyXLL environment.
+Core concepts:
+- McpStructureDef: Used to define structured products (such as range accruals) with required package names, structures, schedules, and payment terms.
+- xScriptStructure (abbreviated as xss): Complex structured product object; xssXXXX represents specific method wrappers on this object for Excel calls.
 """
 
 # =========================
-# 标准库导入（按字母序）
+# Standard Library Imports (alphabetical order)
 # =========================
 import json
 import logging
 import os
 
 # =========================
-# 第三方库导入（按字母序）
+# Third Party Library Imports (alphabetical order)
 # =========================
 import numpy as np
 import pandas as pd
@@ -23,12 +23,12 @@ import pyxll
 from pyxll import RTD, xl_arg, xl_app, xl_func, xl_return, xlfCaller  # noqa: F401
 
 # =========================
-# 项目内模块导入（按字母序、子包优先）
+# Project Internal Module Imports (alphabetical order, subpackages first)
 # =========================
-import mcp.mcp  # 保留：可能被 Excel 侧激活引用
+import mcp.mcp  # Reserved: may be referenced by Excel side activation
 import mcp.xscript.structure as xsst
 import mcp.xscript.utils as xsutils
-from mcp.forward.compound import payoff_generate_spots  # noqa: F401 可能在其他路径调用
+from mcp.forward.compound import payoff_generate_spots  # noqa: F401 May be called in other paths
 from mcp.tool.args_def import McpArgsException, McpException
 from mcp.utils.enums import DateAdjusterRule, InterpolatedVariable, enum_wrapper  # noqa: F401
 from mcp.utils.excel_utils import (
@@ -53,16 +53,16 @@ from mcp.xscript.xs_tools import XssLVPlot, XssMCPlot
 
 
 # =========================
-# Excel/PyXLL 绑定函数
+# Excel/PyXLL Binding Functions
 # =========================
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("args", "var[][]")
 def McpModelDef(args):
     """
-    定义全局模型对象（如曲线、波动等模型参数）。
-    args: Excel 中以二维区域传入的键值/表格参数。
-    返回：xsst.McpModelDef 对象（供其他函数引用）。
+    Define global model objects (such as curve, volatility and other model parameters).
+    args: Key-value/table parameters passed from Excel as 2D region.
+    Returns: xsst.McpModelDef object (for reference by other functions).
     """
     xl = xl_app()
     addr = xl.Caller.GetAddress(External=True)
@@ -77,10 +77,10 @@ def McpModelDef(args):
 @xl_arg("schedule2", "var[][]")
 def McpStructureDef(packageName, structure, schedule1, payoff, schedule2):
     """
-    定义结构化产品的静态信息与条款。
-    packageName: 产品包名/模板名
-    structure/scheduleX/payoff: 来自 Excel 的二维参数区域
-    返回：结构定义对象，用于后续产品实例化。
+    Define static information and terms for structured products.
+    packageName: Product package name/template name
+    structure/scheduleX/payoff: 2D parameter regions from Excel
+    Returns: Structure definition object for subsequent product instantiation.
     """
     xl = xl_app()
     addr = xl.Caller.GetAddress(External=True)

@@ -1,32 +1,32 @@
 # -*- coding: utf-8 -*-
 """
-本模块封装了与波动率相关的 Excel/PyXLL 接口函数：
-- FXVolSurface：外汇波动率曲面（单边）
-- FXVolSurface2 / VolSurface2：支持双边（bid/ask）报价的接口
-- 通用股指/商品 VolSurface 接口
-- 历史波动率、掉期期权（swaption）立方体、SVI/SABR 辅助计算等
+This module encapsulates Excel/PyXLL interface functions related to volatility:
+- FXVolSurface: Foreign exchange volatility surface (single-sided)
+- FXVolSurface2 / VolSurface2: Interface supporting bilateral (bid/ask) quotes
+- Generic equity/commodity VolSurface interface
+- Historical volatility, swaption cubes, SVI/SABR auxiliary calculations, etc.
 
-约定：
-- 大多数构造/查询函数通过 tool_def.xls_create 或 tool_def.xls_call 代理到底层实现。
-- 日期转换统一使用 mcp.utils.excel_utils 中的 pf_date / pf_date_time 或 mcp_dt 工具。
-- 解析矩阵类输入时，默认首行是列标签，首列是行标签。
+Conventions:
+- Most construction/query functions are proxied to underlying implementations via tool_def.xls_create or tool_def.xls_call.
+- Date conversion uniformly uses pf_date / pf_date_time or mcp_dt tools from mcp.utils.excel_utils.
+- When parsing matrix-type inputs, the first row is column labels and the first column is row labels by default.
 """
 
 # =========================
-# 标准库
+# Standard Library
 # =========================
 import json
 import logging
 
 # =========================
-# 第三方库
+# Third Party Libraries
 # =========================
 import numpy as np
 import pandas as pd
 from pyxll import xl_arg, xl_func, xl_return
 
 # =========================
-# 项目内
+# Project Internal
 # =========================
 import mcp.mcp
 import mcp.wrapper
@@ -38,12 +38,12 @@ from mcp.utils.excel_utils import *
 from mcp_calendar import date_to_string
 
 # =========================
-# 工具函数
+# Utility Functions
 # =========================
 def parse_matrix(data):
     """
-    将二维区域解析为 (列标签, 行标签, 数据矩阵)
-    假定 data 结构为：
+    Parse 2D region into (column labels, row labels, data matrix)
+    Assumes data structure as:
         [ [None, c1, c2, ...],
           [r1,    d11, d12, ...],
           [r2,    d21, d22, ...],
@@ -298,7 +298,7 @@ def ScAtmVol(sc, expiryDate, maturity):
 
 
 # =========================
-# 历史波动率
+# Historical Volatility
 # =========================
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("data", "float[][]")
@@ -486,7 +486,7 @@ def McpHistVols(args1, args2, args3, args4, args5, fmt="VP|HD"):
 
 
 # =========================
-# 标的/商品 波动率曲面（SVI）
+# Underlying/Commodity Volatility Surface (SVI)
 # =========================
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("prices", "float[][]")
@@ -840,7 +840,7 @@ def VolSurfaceGetForwards(vs, fmt="V"):
 
 
 # =========================
-# SVI / SABR 公式
+# SVI / SABR Formulas
 # =========================
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("K", "float")
