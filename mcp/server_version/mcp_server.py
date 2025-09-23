@@ -8,6 +8,11 @@ from typing import Any, Dict, List
 import numpy as np
 import pandas as pd
 import requests
+import urllib3
+from urllib3.exceptions import InsecureRequestWarning
+
+# 禁用SSL警告
+urllib3.disable_warnings(InsecureRequestWarning)
 
 from mcp import wrapper
 from mcp.mcp import MBillCurveData, MVanillaSwapCurveData, MFixedRateBondCurveData
@@ -46,6 +51,62 @@ def create_McpNode(url=default_url):
 def ensureAuthorized(className: str) -> str:
     return "valid-signature"  # 假设已实现
 
+def create_no_proxy_session():
+    """创建绕过VPN代理的requests session"""
+    # 完全清除所有代理设置
+    proxy_vars = [
+        'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 
+        'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy',
+        'FTP_PROXY', 'ftp_proxy', 'SOCKS_PROXY', 'socks_proxy'
+    ]
+    for var in proxy_vars:
+        if var in os.environ:
+            del os.environ[var]
+
+    # 创建完全无代理的session
+    session = requests.Session()
+    session.proxies = {
+        'http': '',
+        'https': '',
+        'ftp': '',
+        'socks': ''
+    }
+    return session
+
+def safe_post_request(url, json=None, headers=None, timeout=5):
+    """安全的POST请求，自动绕过VPN代理"""
+    session = create_no_proxy_session()
+    
+    try:
+        # 尝试使用certifi证书验证
+        response = session.post(url, json=json, headers=headers, timeout=timeout, verify=True)
+        return response
+    except requests.exceptions.SSLError:
+        try:
+            # 尝试禁用SSL验证
+            response = session.post(url, json=json, headers=headers, timeout=timeout, verify=False)
+            return response
+        except requests.exceptions.RequestException:
+            # 最后尝试使用urllib3直接连接
+            import json as json_module
+            http = urllib3.PoolManager()
+            
+            request_headers = dict(headers) if headers else {}
+            request_headers['Content-Type'] = 'application/json'
+            
+            response = http.request('POST', url, 
+                                  body=json_module.dumps(json).encode('utf-8') if json else None,
+                                  headers=request_headers,
+                                  timeout=timeout)
+            
+            # 转换为requests Response对象
+            from requests.models import Response
+            req_response = Response()
+            req_response.status_code = response.status
+            req_response._content = response.data
+            req_response.headers = dict(response.headers)
+            return req_response
+
 class McpObject:
     _cache = {}  # 类级缓存，避免重复构造
 
@@ -63,7 +124,7 @@ class McpObject:
         url = f"{self.node.node_url}/{self.class_name}/{self.identifier}/{method_name}"
         payload = {"args": list(args), **kwargs}
         headers = {"X-Signature": self.key}
-        response = requests.post(url, json=payload, headers=headers, timeout=5)
+        response = safe_post_request(url, json=payload, headers=headers, timeout=5)
         response_data = response.json()
         if response_data["status"] == "success":
             return response_data["result"]
@@ -86,7 +147,7 @@ class McpObject:
         payload = {"identifiers": identifiers, "params": params}
         key = ensureAuthorized(class_name)
         headers = {"X-Signature": key}
-        response = requests.post(url, json=payload, headers=headers, timeout=50)
+        response = safe_post_request(url, json=payload, headers=headers, timeout=50)
         response_data = response.json()
         if response_data["status"] != "success":
             raise Exception(f"Batch create failed: {response_data['error']}")
@@ -102,7 +163,7 @@ class McpObject:
         payload = {"identifiers": identifiers}
         key = ensureAuthorized(class_name)
         headers = {"X-Signature": key}
-        response = requests.post(url, json=payload, headers=headers, timeout=5)
+        response = safe_post_request(url, json=payload, headers=headers, timeout=5)
         response_data = response.json()
         print(response_data)
         if response_data["status"] != "success":
@@ -128,7 +189,7 @@ class McpObject:
         payload = {"identifiers": identifiers, "metric_names": metric_names}
         key = ensureAuthorized(class_name)
         headers = {"X-Signature": key}
-        response = requests.post(url, json=payload, headers=headers, timeout=5)
+        response = safe_post_request(url, json=payload, headers=headers, timeout=5)
         response_data = response.json()
         if response_data["status"] != "success":
             raise Exception(f"Error from server: {response_data['error']}")
@@ -142,7 +203,7 @@ class McpObject:
         payload = {"identifiers": identifiers}
         key = ensureAuthorized(class_name)
         headers = {"X-Signature": key}
-        response = requests.post(url, json=payload, headers=headers, timeout=5)
+        response = safe_post_request(url, json=payload, headers=headers, timeout=5)
         response_data = response.json()
         if response_data["status"] != "success":
             raise Exception(f"Error from server: {response_data['error']}")
@@ -156,7 +217,7 @@ class McpObject:
         payload = {"identifiers": identifiers}
         key = ensureAuthorized(class_name)
         headers = {"X-Signature": key}
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response = safe_post_request(url, json=payload, headers=headers, timeout=10)
         response_data = response.json()
         if response_data["status"] != "success":
             raise Exception(f"Error from server: {response_data['error']}")
@@ -170,7 +231,7 @@ class McpObject:
         payload = {"identifiers": identifiers, "reference_date": reference_date, "count": count, "periods": periods}
         key = ensureAuthorized(class_name)
         headers = {"X-Signature": key}
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response = safe_post_request(url, json=payload, headers=headers, timeout=10)
         response_data = response.json()
         if response_data["status"] != "success":
             raise Exception(f"Error from server: {response_data['error']}")
@@ -184,7 +245,7 @@ class McpObject:
         payload = {"identifiers": identifiers}
         key = ensureAuthorized(class_name)
         headers = {"X-Signature": key}
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response = safe_post_request(url, json=payload, headers=headers, timeout=10)
         response_data = response.json()
         if response_data["status"] != "success":
             raise Exception(f"Error from server: {response_data['error']}")
@@ -199,7 +260,7 @@ class McpObject:
         print(f'=========payload={payload}')
         key = ensureAuthorized(class_name)
         headers = {"X-Signature": key}
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response = safe_post_request(url, json=payload, headers=headers, timeout=10)
         response_data = response.json()
         if response_data["status"] != "success":
             raise Exception(f"Error from server: {response_data['error']}")

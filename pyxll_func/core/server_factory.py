@@ -31,10 +31,10 @@ def McpBatchCreateObjects(identifiers, class_name=''):
 def McpFixedRateBond_Svr(identifiers, settlement_date):
     """
     Get fixed rate bond
-    Parameters: identifiers - 债券代码, settlement_date - 结算日期
-    Returns: 债券数据
+    Parameters: identifiers - Bond code, settlement_date - Settlement date
+    Returns: Bond data
     """
-    result = mcp_server.McpFixedRateBonds2(identifiers, settlement_date)
+    result = mcp_server.McpFixedRateBonds(identifiers, settlement_date)
     return result
 
 
@@ -43,9 +43,9 @@ def McpFixedRateBond_Svr(identifiers, settlement_date):
 @xl_arg("flag", "bool")
 def McpFixedRateBondData_Svr(mcpFixedRateBond, flag=False):
     """
-    Get fixed rate bond数据
-    Parameters: mcpFixedRateBond - 债券对象, flag - 格式化标志
-    Returns: 债券数据
+    Get fixed rate bond data
+    Parameters: mcpFixedRateBond - Bond object, flag - Format flag
+    Returns: Bond data
     """
     obj = mcp_server.object_data_cache[mcpFixedRateBond]
     return decode(obj, flag)
@@ -54,9 +54,9 @@ def McpFixedRateBondData_Svr(mcpFixedRateBond, flag=False):
 @xl_arg("identifiers", "str")
 def McpBondCurve_Svr(identifiers):
     """
-    get服务器端债券曲线
-    Parameters: identifiers - 债券代码
-    Returns: 债券曲线对象
+    Get server-side bond curve
+    Parameters: identifiers - Bond code
+    Returns: Bond curve object
     """
     frb = mcp_server.McpBondCurves(identifiers)
     return frb
@@ -66,9 +66,9 @@ def McpBondCurve_Svr(identifiers):
 @xl_arg("flag", "bool")
 def McpBondCurveData_Svr(mcpBondCurve, flag=False):
     """
-    get债券曲线数据
-    Parameters: mcpBondCurve - 曲线对象, flag - 格式化标志
-    Returns: 曲线数据
+    Get bond curve data
+    Parameters: mcpBondCurve - Curve object, flag - Format flag
+    Returns: Curve data
     """
     obj = mcp_server.object_data_cache[mcpBondCurve]
     return decode(obj, flag)
@@ -78,9 +78,9 @@ def McpBondCurveData_Svr(mcpBondCurve, flag=False):
 @xl_arg("identifiers", "str")
 def McpParametricCurves_Svr(identifiers):
     """
-    get服务器端参数化曲线
-    Parameters: identifiers - 曲线代码
-    Returns: 参数化曲线对象
+    Get server-side parametric curve
+    Parameters: identifiers - Curve code
+    Returns: Parametric curve object
     """
     frb = mcp_server.McpParametricCurves(identifiers)
     return frb
@@ -91,9 +91,9 @@ def McpParametricCurves_Svr(identifiers):
 @xl_arg("flag", "bool")
 def McpParametricCurvesData_Svr(mcpParametricCurve, flag=False):
     """
-    get参数化曲线数据
-    Parameters: mcpParametricCurve - 曲线对象, flag - 格式化标志
-    Returns: 曲线数据
+    Get parametric curve data
+    Parameters: mcpParametricCurve - Curve object, flag - Format flag
+    Returns: Curve data
     """
     obj = mcp_server.object_data_cache[mcpParametricCurve]
     return decode(obj, flag)
@@ -103,9 +103,9 @@ def McpParametricCurvesData_Svr(mcpParametricCurve, flag=False):
 @xl_arg("identifiers", "str")
 def McpBondRemainingMaturity_Svr(identifiers):
     """
-    From serverget债券剩余期限
-    Parameters: identifiers - 债券标识符
-    Returns: 剩余期限
+    Get bond remaining maturity from server
+    Parameters: identifiers - Bond identifier
+    Returns: Remaining maturity
     """
     mcp_server.McpBondRemainingMaturity(identifiers)
     return mcp_server.McpBondRemainingMaturity(identifiers)
@@ -114,9 +114,9 @@ def McpBondRemainingMaturity_Svr(identifiers):
 @xl_arg("ccy", "str")
 def McpCalendar_Svr(ccy):
     """
-    From servercreate日历对象
-    Parameters: ccy - 货币代码
-    Returns: 日历对象
+    Create calendar object from server
+    Parameters: ccy - Currency code
+    Returns: Calendar object
     """
     result = mcp_server.McpCalenders(ccy)
     return result
@@ -127,9 +127,9 @@ def McpCalendar_Svr(ccy):
 @xl_arg("flag", "bool")
 def McpCalendersData_Svr(mcpCalender, flag=False):
     """
-    get日历数据
-    Parameters: mcpCalender - 日历对象, flag - 格式化标志
-    Returns: 日历数据
+    Get calendar data
+    Parameters: mcpCalender - Calendar object, flag - Format flag
+    Returns: Calendar data
     """
     result = mcp_server.McpCalendersData(mcpCalender,flag)
     return result
@@ -141,9 +141,9 @@ def McpCalendersData_Svr(mcpCalender, flag=False):
 @xl_arg("point", "var")
 def McpVanillaSwap_Svr(identifiers, enddate='', swaprate='', point='0'):
     """
-    From servercreate普通利率互换对象(带参数)
-    Parameters: identifiers - 互换标识符, enddate - 结束日期, swaprate - 互换利率, point - 点数
-    Returns: 互换对象
+    Create vanilla interest rate swap object from server (with parameters)
+    Parameters: identifiers - Swap identifier, enddate - End date, swaprate - Swap rate, point - Points
+    Returns: Swap object
     """
     result = mcp_server.McpVanillaSwaps2(identifiers, enddate, swaprate, point)
     return result
@@ -153,9 +153,9 @@ def McpVanillaSwap_Svr(identifiers, enddate='', swaprate='', point='0'):
 # @xl_arg("identifiers", "str")
 # def McpVanillaSwap_Svr(identifiers):
 #     """
-#     From servercreate普通利率互换对象
-#     Parameters: identifiers - 互换标识符
-#     Returns: 互换对象
+#     Create vanilla interest rate swap object from server
+#     Parameters: identifiers - Swap identifier
+#     Returns: Swap object
 #     """
 #     result = mcp_server.McpVanillaSwaps(identifiers)
 #     return result
@@ -166,9 +166,9 @@ def McpVanillaSwap_Svr(identifiers, enddate='', swaprate='', point='0'):
 @xl_arg("flag", "bool")
 def McpVanillaSwapsData_Svr(mcpVanillaSwap, flag=False):
     """
-    get普通利率互换数据
-    Parameters: mcpVanillaSwap - 互换对象, flag - 格式化标志
-    Returns: 互换数据
+    Get vanilla interest rate swap data
+    Parameters: mcpVanillaSwap - Swap object, flag - Format flag
+    Returns: Swap data
     """
     result = mcp_server.McpVanillaSwapsData(mcpVanillaSwap,flag)
     return result
@@ -177,9 +177,9 @@ def McpVanillaSwapsData_Svr(mcpVanillaSwap, flag=False):
 @xl_arg("identifiers", "str")
 def McpVolSurface_Svr(identifiers):
     """
-    From servercreate波动率曲面对象
-    Parameters: identifiers - 曲面标识符
-    Returns: 曲面对象
+    Create volatility surface object from server
+    Parameters: identifiers - Surface identifier
+    Returns: Surface object
     """
     result = mcp_server.McpVolSurfaces(identifiers)
     return result
@@ -190,9 +190,9 @@ def McpVolSurface_Svr(identifiers):
 @xl_arg("flag", "bool")
 def McpVolSurfacesData_Svr(mcpVolSurfaces, flag=False):
     """
-    get波动率曲面数据
-    Parameters: mcpVolSurfaces - 曲面对象, flag - 格式化标志
-    Returns: 曲面数据
+    Get volatility surface data
+    Parameters: mcpVolSurfaces - Surface object, flag - Format flag
+    Returns: Surface data
     """
     result = mcp_server.McpVolSurfacesData(mcpVolSurfaces,flag)
     return result
@@ -204,9 +204,9 @@ def McpVolSurfacesData_Svr(mcpVolSurfaces, flag=False):
 # @xl_arg("periods", "str")
 # def McpHistory_Svr(identifiers, reference_date, count, periods):
 #     """
-#     From serverget历史数据
-#     Parameters: identifiers - 标识符, reference_date - 参考日期, count - 数量, periods - 期间
-#     Returns: 历史数据
+#     Get historical data from server
+#     Parameters: identifiers - Identifier, reference_date - Reference date, count - Count, periods - Periods
+#     Returns: Historical data
 #     """
 #     result = mcp_server.McpHistory(identifiers, reference_date, count, periods)
 #     return result
@@ -216,9 +216,9 @@ def McpVolSurfacesData_Svr(mcpVolSurfaces, flag=False):
 @xl_arg("key", "str")
 def McpBondMarketData_Svr(identifiers, key):
     """
-    From serverget债券市场数据
-    Parameters: identifiers - 债券标识符, key - 数据键
-    Returns: 市场数据
+    Get bond market data from server
+    Parameters: identifiers - Bond identifier, key - Data key
+    Returns: Market data
     """
     result = mcp_server.McpBondMarketData(identifiers, key)
     return result
@@ -227,9 +227,9 @@ def McpBondMarketData_Svr(identifiers, key):
 @xl_arg("identifiers", "str")
 def McpBondMarketArgs_Svr(identifiers):
     """
-    From serverget债券市场参数
-    Parameters: identifiers - 债券标识符
-    Returns: 市场参数
+    Get bond market parameters from server
+    Parameters: identifiers - Bond identifier
+    Returns: Market parameters
     """
     result = mcp_server.McpBondMarketArgs(identifiers)
     return result
@@ -238,9 +238,9 @@ def McpBondMarketArgs_Svr(identifiers):
 @xl_arg("identifiers", "str")
 def McpSwapCurve_Svr(identifiers):
     """
-    From servercreate互换曲线对象
-    Parameters: identifiers - 曲线标识符
-    Returns: 曲线对象
+    Create swap curve object from server
+    Parameters: identifiers - Curve identifier
+    Returns: Curve object
     """
     frb = mcp_server.McpSwapCurves(identifiers)
     return frb
@@ -250,46 +250,46 @@ def McpSwapCurve_Svr(identifiers):
 @xl_arg("flag", "bool")
 def McpVolSurface2_Svr(identifiers, flag=False):
     """
-    From server根据名称get波动率曲面(版本2)
-    Parameters: identifiers - 标识符, flag - 格式化标志
-    Returns: 波动率曲面
+    Get volatility surface by name from server (version 2)
+    Parameters: identifiers - Identifier, flag - Format flag
+    Returns: Volatility surface
     """
     vsf = mcp_server.McpVolSurface2ByName(identifiers, flag)
     return vsf
 
-# to薛苗：为什么还要区分Euqity？？？
+# Note: Why distinguish Equity?
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
 def McpVolSurface2Equity_Svr(identifiers):
     """
-    From serverget股票波动率曲面(版本2)
-    Parameters: identifiers - 标识符
-    Returns: 股票波动率曲面
+    Get equity volatility surface from server (version 2)
+    Parameters: identifiers - Identifier
+    Returns: Equity volatility surface
     """
     vsf = mcp_server.McpVolSurface2Equity(identifiers)
     return vsf
 
-# to薛苗：Flag是什么意思？？？
+# Note: What does Flag mean?
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
 @xl_arg("flag", "bool")
 def McpVolSurface_Svr(identifiers, flag=False):
     """
-    From server根据名称get波动率曲面
-    Parameters: identifiers - 标识符, flag - 格式化标志
-    Returns: 波动率曲面
+    Get volatility surface by name from server
+    Parameters: identifiers - Identifier, flag - Format flag
+    Returns: Volatility surface
     """
     vsf = mcp_server.McpVolSurfaceByName(identifiers, flag)
     return vsf
 
-# to薛苗：现在有单边外汇波动率曲面吗？？？
+# Note: Is there unilateral FX volatility surface now?
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
 def McpFXVolSurface_Svr(identifiers):
     """
-    From server根据名称get外汇波动率曲面
-    Parameters: identifiers - 标识符
-    Returns: 外汇波动率曲面
+    Get FX volatility surface by name from server
+    Parameters: identifiers - Identifier
+    Returns: FX volatility surface
     """
     vsf = mcp_server.McpFXVolSurfaceByName(identifiers)
     return vsf
@@ -299,22 +299,22 @@ def McpFXVolSurface_Svr(identifiers):
 @xl_arg("identifiers", "str")
 def McpFXVolSurface2_Svr(identifiers):
     """
-    From server根据名称get外汇波动率曲面(版本2)
-    Parameters: identifiers - 标识符
-    Returns: 外汇波动率曲面
+    Get FX volatility surface by name from server (version 2)
+    Parameters: identifiers - Identifier
+    Returns: FX volatility surface
     """
     vsf = mcp_server.McpFXVolSurface2ByName(identifiers)
     return vsf
 
-# to薛苗：所有XXXData是否可以合并到一个方法中？？？
+# Note: Can all XXXData be merged into one method?
 @xl_func(macro=False, recalc_on_open=True, auto_resize=True)
 @xl_arg("mcpSwapCurve", "object")
 @xl_arg("flag", "bool")
 def McpSwapCurvesData_Svr(mcpSwapCurve, flag=False):
     """
-    get互换曲线数据
-    Parameters: mcpSwapCurve - 曲线对象, flag - 格式化标志
-    Returns: 曲线数据
+    Get swap curve data
+    Parameters: mcpSwapCurve - Curve object, flag - Format flag
+    Returns: Curve data
     """
     result = mcp_server.McpSwapCurvesData(mcpSwapCurve, flag)
     return result
@@ -325,49 +325,49 @@ def McpSwapCurvesData_Svr(mcpSwapCurve, flag=False):
 @xl_arg("key", "str")
 def McpGetValue_Svr(identifier, key):
     """
-    From serverget值
-    Parameters: identifier - 标识符, key - 键
-    Returns: 值
+    Get value from server
+    Parameters: identifier - Identifier, key - Key
+    Returns: Value
     """
     result = mcp_server.McpGetValue(identifier, key)
     return result
 
-# to薛苗：什么意思，给解释？？？
+# Note: What does this mean? Please explain.
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
 @xl_arg("class_name", "str")
 @xl_arg("flag", "bool")
 def McpBatchGetRowData_Svr(identifiers, class_name='', flag=False):
     """
-    From server批量get行数据
-    Parameters: identifiers - 标识符, class_name - 类名, flag - 格式化标志
-    Returns: 行数据
+    Get batch row data from server
+    Parameters: identifiers - Identifier, class_name - Class name, flag - Format flag
+    Returns: Row data
     """
     result = mcp_server.McpBatchGetRowData(identifiers, class_name, flag)
     return result
 
-# to薛苗：什么意思，给解释？？？
+# Note: What does this mean? Please explain.
 @xl_func(macro=False, recalc_on_open=True, auto_resize=True)
 @xl_arg("obj", "object")
 @xl_arg("flag", "bool")
 def decode(obj, flag=False):
     """
-    From server解码对象
-    Parameters: obj - 对象, flag - 格式化标志
-    Returns: 解码后的数据
+    Decode object from server
+    Parameters: obj - Object, flag - Format flag
+    Returns: Decoded data
     """
     result = mcp_server.decode(obj, flag)
     return result
 
-# to薛苗：什么意思，给解释？？？
+# Note: What does this mean? Please explain.
 @xl_func(macro=False, recalc_on_open=True, auto_resize=True)
 @xl_arg("obj", "object")
 @xl_arg("flag", "bool")
 def decode2(obj, flag=False):
     """
-    From server解码对象(方法2)
-    Parameters: obj - 对象, flag - 格式化标志
-    Returns: 解码后的数据
+    Decode object from server (method 2)
+    Parameters: obj - Object, flag - Format flag
+    Returns: Decoded data
     """
     result = mcp_server.decode2(obj, flag)
     return result
@@ -379,14 +379,14 @@ def decode2(obj, flag=False):
 @xl_arg("yield_value", "str")
 def McpZSpread_Svr(identifiers, curve_name, yield_value=''):
     """
-    From server计算Z-Spread
-    Parameters: identifiers - 标识符, curve_name - 曲线名称, yield_value - 收益率值
-    Returns: Z-Spread值
+    Calculate Z-Spread from server
+    Parameters: identifiers - Identifier, curve_name - Curve name, yield_value - Yield value
+    Returns: Z-Spread value
     """
     result = mcp_server.McpZSpread(identifiers, curve_name, yield_value)
     return result
 
-# to薛苗：什么意思，给解释？？？
+# Note: What does this mean? Please explain.
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
 @xl_arg("key", "str")
@@ -674,7 +674,7 @@ def McpGet_Svr(assetid, field):
     result = mcp_server.McpGet1(assetid, field)
     return result
 
-# 新增接口
+# New interface
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
 def McpCapVolSurface_Svr(identifiers):
