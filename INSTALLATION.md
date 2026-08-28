@@ -1,275 +1,116 @@
 # MCP Installation Guide
 
-This guide provides step-by-step instructions for installing the MCP (Mathema Calculation Plus) library on Windows systems.
+Windows 10/11, **64-bit Excel**, and **64-bit CPython 3.9–3.13**.
 
-## 🚀 Installation Methods
+## Quick install (recommended)
 
-MCP supports two installation methods:
+1. Extract this package to a folder you will keep (do not delete it after install).
+2. Double-click `install.bat` (or `quick_install.bat` — same script).
+3. Choose language, pick a listed Python, paste a PyXLL license if you have one (Enter = trial).
+4. Close Excel completely, then reopen it.
 
-### 🎯 Quick Installation (Recommended)
+The installer:
 
-**Best for**: Most users, beginners, production environments
+- Scans 64-bit CPython 3.9–3.13 that match a shipped `_mcp.cp3xx-win_amd64.pyd`
+- Writes `lib\X64\pyxll.cfg` (`executable` + license). It does **not** set `PYTHONPATH`
+- Optionally installs `numpy` / `pandas` / `requests` / `python-dateutil` (default: skip)
+- Registers `lib\X64\pyxll.xll`
 
-**Advantages**:
-- ✅ One-click installation
-- ✅ Automatic error handling and recovery
-- ✅ Comprehensive system detection
-- ✅ Built-in verification and testing
-- ✅ Professional installation experience
+Verify:
 
-#### Quick Installation Steps
-1. **Download and extract** the MCP library to your desired location
-2. **Run the installation script**:
-   ```cmd
-   quick_install.bat
-   ```
-3. **Follow the on-screen prompts** and restart Excel when prompted
-
-#### Verify Installation
-After installation, verify everything works:
 ```cmd
 python test_install.py
 ```
 
-### 🔧 Manual Installation
+Run `test_install.py` with the **same** Python you selected for Excel.
 
-**Best for**: Advanced users, custom configurations, troubleshooting
+## Prerequisites
 
-**Advantages**:
-- ✅ Full control over installation process
-- ✅ Custom configuration options
-- ✅ Better understanding of system setup
-- ✅ Troubleshooting capabilities
+- Windows 10/11 **64-bit**
+- **64-bit** Microsoft Excel 2016 or later (32-bit Excel is not supported)
+- **64-bit CPython 3.9, 3.10, 3.11, 3.12, or 3.13** from [python.org](https://www.python.org/downloads/) — tick “Add python.exe to PATH”
+- PyXLL license for production Excel use ([pyxll.com](https://www.pyxll.com/)); trial is enough to try the add-in
+- About 500 MB disk; 8 GB RAM recommended
 
-### 🤔 Which Installation Method Should I Choose?
+## Manual installation
 
-| Scenario | Recommended Method | Reason |
-|----------|-------------------|---------|
-| **First-time user** | Automated Installation | Easiest and most reliable |
-| **Production deployment** | Automated Installation | Consistent, tested process |
-| **Multiple installations** | Automated Installation | Fast and standardized |
-| **Custom Python setup** | Manual Installation | Full control over configuration |
-| **Troubleshooting issues** | Manual Installation | Better understanding of problems |
-| **Learning MCP internals** | Manual Installation | Educational value |
-| **Corporate environment** | Manual Installation | IT policy compliance |
-| **Automated installation failed** | Manual Installation | Fallback option |
+Use this only if the script cannot run.
 
-## 📋 Prerequisites
+1. Install dependencies into the Python that Excel will use:
 
-### System Requirements
-- **Operating System**: Windows 10/11 (64-bit recommended)
-- **Python**: 3.9.x (required)
-- **Excel**: Microsoft Excel 2013 or later
-- **Memory**: 4GB RAM minimum, 8GB recommended
-- **Storage**: 500MB free space
+   ```cmd
+   cd C:\path\to\mcp_excel
+   C:\Path\To\Python\python.exe -m pip install -r requirements.txt
+   ```
 
-### Required Software
-1. **Python 3.9.x**
-   - Download from [python.org](https://www.python.org/downloads/)
-   - Make sure to check "Add Python to PATH" during installation
-   - Verify installation: `python --version`
+   Keep NumPy on 1.x (`numpy>=1.19,<2`).
 
-2. **Microsoft Excel**
-   - Excel 2013, 2016, 2019, or 2021
-   - Both 32-bit and 64-bit versions are supported
+2. Edit `lib\X64\pyxll.cfg`:
+   - `executable` = that Python’s `pythonw.exe` (or `python.exe`)
+   - `[LICENSE] key` = your PyXLL key (or leave empty for trial)
 
-3. **PyXLL (Optional for Excel integration)**
-   - Commercial license required
-   - Download from [pyxll.com](https://www.pyxll.com/)
-   - Install after MCP installation
+3. Register the add-in (from the MCP folder):
 
-## 🔧 Manual Installation
+   ```cmd
+   C:\Path\To\Python\python.exe -m pyxll install --install-first --non-interactive lib\X64
+   C:\Path\To\Python\python.exe -m pyxll activate --non-interactive lib\X64
+   ```
 
-If you prefer manual installation or automated installation fails, follow these detailed steps:
+4. Close and reopen Excel.
 
-### Why Choose Manual Installation?
+You do **not** need a user `PYTHONPATH`. `mcp/__init__.py` loads `lib\X64\_mcp.cp3xx-win_amd64.pyd` for the running interpreter.
 
-- **Full Control**: Complete control over every installation step
-- **Customization**: Ability to customize Python paths, Excel settings, etc.
-- **Learning**: Better understanding of MCP's system requirements
-- **Troubleshooting**: Easier to identify and fix specific issues
-- **Corporate Environment**: Compliance with IT policies and restrictions
-
-### Manual Installation Steps
-
-### Step 1: Install Python Dependencies
+## Verify
 
 ```cmd
-# Navigate to MCP directory
-cd C:\path\to\mcp-python
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### Step 2: Set PYTHONPATH
-
-Add these paths to your system PYTHONPATH:
-```
-C:\path\to\mcp-python
-C:\path\to\mcp-python\lib\X64
-```
-
-**Windows 10/11:**
-1. Press `Win + R`, type `sysdm.cpl`, press Enter
-2. Click "Environment Variables"
-3. Under "User variables", find or create "PYTHONPATH"
-4. Add the paths above, separated by semicolons
-
-### Step 3: Configure Excel Integration
-
-1. **Update pyxll.cfg:**
-   - Open `lib\X64\pyxll.cfg` (or `lib\Win32\pyxll.cfg` for 32-bit)
-   - Update the `executable` line to point to your Python installation:
-     ```
-     executable = C:\Python39\python.exe
-     ```
-
-2. **Install PyXLL add-in:**
-   - Copy `lib\X64\pyxll.xll` to your Excel startup directory
-   - Common locations:
-     - `%APPDATA%\Microsoft\Excel\XLSTART\`
-     - `%APPDATA%\Microsoft\AddIns\`
-
-3. **Restart Excel** and check Add-ins
-
-## 🧪 Verify Installation
-
-### Test Python Library
-```cmd
-python -c "import mcp; print('MCP installed successfully')"
-```
-
-### Test Excel Integration
-1. Open Excel
-2. Go to File → Options → Add-ins
-3. Check if "PyXLL" is listed and enabled
-4. Try using MCP functions in Excel
-
-### Run Example Scripts
-```cmd
-# Test all examples
-python script\03_test_python.py
-
-# Run specific example
+python -c "import mcp; print('MCP OK', mcp._mcp.__file__)"
+python test_install.py
 python example\calendar\quickstart.py
 ```
 
-## 🔄 Uninstallation
+In Excel: File → Options → Add-ins → confirm PyXLL is enabled.
 
-To remove MCP completely:
+## Uninstall
 
-```cmd
-# Manual uninstallation - remove PYTHONPATH entries and delete MCP directory
-# No automated uninstall script is provided
-```
+1. Excel → File → Options → Add-ins → Excel Add-ins → uncheck PyXLL.
+2. Delete the MCP folder.
 
-This will:
-- Remove MCP paths from PYTHONPATH
-- Remove PyXLL add-in from Excel
-- Remove desktop shortcuts
-- Optionally delete MCP files
+## Troubleshooting
 
-## ❗ Troubleshooting
+**No matching Python**  
+Install 64-bit CPython 3.9–3.13. This package has one `_mcp.cp3xx-win_amd64.pyd` per version.
 
-### Common Issues
+**32-bit Excel**  
+Not supported. Install 64-bit Office. `install.bat --skip-excel` only writes Python/config.
 
-#### 1. Python Version Error
-```
-[ERROR] Python 3.9.x is required, but found 3.8.x
-```
-**Solution:** Install Python 3.9.x from [python.org](https://www.python.org/downloads/)
+**`import mcp` fails / DLL load failed**  
+Use the same ABI as the pyd (3.11 Python needs `cp311`). Keep `cudart64_12.dll` and `curand64_10.dll` next to the pyds.
 
-#### 2. Import Error
-```
-ModuleNotFoundError: No module named 'mcp'
-```
-**Solution:** 
-- Check PYTHONPATH is set correctly
-- Restart command prompt
-- Verify MCP files are in the correct location
+**NumPy 2.x**  
+Reinstall: `python -m pip install "numpy>=1.19,<2"`
 
-#### 3. Excel Add-in Not Loading
-**Solution:**
-- Check Excel version compatibility
-- Verify pyxll.xll is in the correct directory
-- Check Excel Add-ins settings
-- Restart Excel
+**Excel add-in not loading**  
+Close all Excel windows, run `install.bat` again, check `lib\X64\pyxll.cfg` `executable`.
 
-#### 4. PyXLL Configuration Error
-**Solution:**
-- Update `pyxll.cfg` with correct Python path
-- Ensure PyXLL is properly licensed
-- Check file permissions
+**PyXLL license**  
+Paste the key in the installer or in `[LICENSE] key`. Empty key uses the trial.
 
-### Getting Help
+Help: [help.mathema.com.cn](https://help.mathema.com.cn/latest/api/) · [GitHub Issues](https://github.com/MDTSH/mcp_excel/issues)
 
-- **Documentation**: [help.mathema.com.cn](http://help.mathema.com.cn/latest/api/)
-- **GitHub Issues**: [Report problems](https://github.com/MDTSH/mcp_excel/issues)
-- **Email Support**: Contact Mathema Team
-
-## 📁 File Structure
-
-After installation, your MCP directory should look like this:
+## Layout
 
 ```
-mcp-python/
-├── quick_install.bat        # Main installation script
-├── install_helper.py        # Python installation helper
-├── requirements.txt         # Python dependencies
-├── mcp/                     # Core MCP library
-├── example/                 # Example scripts
-├── excel/                   # Excel templates
-├── lib/                     # Binary libraries
-│   ├── X64/                 # 64-bit libraries
-│   └── Win32/               # 32-bit libraries
-└── script/                  # Utility scripts
+mcp_excel/
+├── install.bat / quick_install.bat
+├── install_mcp_excel.py
+├── test_install.py
+├── requirements.txt
+├── mcp/                 # Python package (loads lib/X64 by ABI)
+├── lib/X64/             # tagged pyds, CUDA runtime, pyxll.xll, pyxll.cfg
+├── pyxll/               # PyXLL Python module
+├── pyxll_func/          # Excel UDFs
+├── example/
+└── excel/zh , excel/en  # templates TC01–TC46
 ```
 
-## 🔐 Security Notes
-
-- Always run installation scripts as Administrator for full functionality
-- PyXLL requires a valid commercial license
-- MCP binary files (.pyd) are proprietary and not redistributable
-- Keep your PyXLL license key secure
-
-## 📞 Support
-
-For technical support or questions:
-
-- **Documentation**: [help.mathema.com.cn](http://help.mathema.com.cn/latest/api/)
-- **GitHub**: [github.com/MDTSH/mcp_excel](https://github.com/MDTSH/mcp_excel)
-- **Issues**: [GitHub Issues](https://github.com/MDTSH/mcp_excel/issues)
-
-## 📊 Installation Summary
-
-### Quick Reference
-
-| Method | Command | Time | Difficulty | Best For |
-|--------|---------|------|------------|----------|
-| **Automated** | `quick_install.bat` | 2-3 min | ⭐ | Most users |
-| **Quick** | `quick_install.bat` | 1-2 min | ⭐ | Fast setup |
-| **Manual** | See steps above | 10-15 min | ⭐⭐⭐ | Advanced users |
-| **Verify** | `python test_install.py` | 30 sec | ⭐ | All methods |
-
-### Post-Installation Checklist
-
-After any installation method, verify:
-
-- [ ] Python 3.9.x is installed and working
-- [ ] MCP library can be imported: `python -c "import mcp"`
-- [ ] PYTHONPATH includes MCP directories
-- [ ] Excel integration works (if applicable)
-- [ ] Example scripts run successfully
-- [ ] PyXLL add-in loads in Excel (if applicable)
-
-### Getting Help
-
-- **Installation Issues**: Run `python test_install.py` for diagnostics
-- **Documentation**: [help.mathema.com.cn](http://help.mathema.com.cn/latest/api/)
-- **GitHub Issues**: [Report problems](https://github.com/MDTSH/mcp_excel/issues)
-- **Scripts Guide**: [Installation Scripts Guide](INSTALL_SCRIPTS_README.md)
-
----
-
-**⚠️ Important**: This software is provided for educational and professional use. Users are responsible for compliance with all applicable regulations and third-party license terms.
+Default run mode is **CPU** (`MCP_RUNMODE = CPU` in `pyxll.cfg`). GPU needs a supported NVIDIA driver; this package ships `cudart64_12.dll` and `curand64_10.dll` only.

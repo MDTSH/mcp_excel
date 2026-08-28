@@ -1,0 +1,110 @@
+{
+  "valuation_date": "20260827",
+  "_metadata": {
+    "data_update_time": "2026-08-27T00:00:00+08:00",
+    "market_data_version": "20260827.p3",
+    "data_source": "MCP Excel P3 Sample (Credit / BondSpread / Forward / Vol)"
+  },
+  "YieldCurve": [
+    {
+      "curve_id": "CNYDEPO",
+      "referenceDate": "20260827",
+      "InterpolationMethod": "LINEARINTERPOLATION",
+      "DayCounter": "Act365Fixed",
+      "Tenors": ["ON", "1M", "3M", "6M", "1Y", "2Y", "3Y", "5Y"],
+      "ZeroRates": [0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
+    },
+    {
+      "curve_id": "CNYDEPO_BUMP",
+      "referenceDate": "20260827",
+      "InterpolationMethod": "LINEARINTERPOLATION",
+      "DayCounter": "Act365Fixed",
+      "Tenors": ["ON", "1M", "3M", "6M", "1Y", "2Y", "3Y", "5Y"],
+      "ZeroRates": [0.01885, 0.0193, 0.0196, 0.02025, 0.0208, 0.0215, 0.0220, 0.0230]
+    }
+  ],
+  "BondCurve": [
+    {
+      "curve_id": "CNY_BOND_TREASURY",
+      "data_source": "times_and_rates",
+      "SettlementDate": "20260827",
+      "calendar": "CNY",
+      "InterpolatedVariable": "ZERORATES",
+      "InterpolationMethod": "LINEARINTERPOLATION",
+      "DayCounter": "Act365Fixed",
+      "Times": [0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0],
+      "ZeroRates": [0.0110, 0.0114, 0.0125, 0.0130, 0.0144, 0.0157, 0.0173]
+    },
+    {
+      "curve_id": "CNY_BOND_POLICY",
+      "data_source": "times_and_rates",
+      "SettlementDate": "20260827",
+      "calendar": "CNY",
+      "InterpolatedVariable": "ZERORATES",
+      "InterpolationMethod": "LINEARINTERPOLATION",
+      "DayCounter": "Act365Fixed",
+      "Times": [0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0],
+      "ZeroRates": [0.0125, 0.0130, 0.0142, 0.0148, 0.0164, 0.0178, 0.0195]
+    }
+  ],
+  "CreditCurve": [
+    {
+      "curve_id": "CNY_CREDIT_CFETS",
+      "data_source": "spreads",
+      "referenceDate": "20260827",
+      "yield_curve": "CNYDEPO",
+      "Tenors": ["6M", "1Y", "3Y", "5Y"],
+      "Spreads": [80.0, 90.0, 100.0, 110.0],
+      "RecoveryRate": 0.4,
+      "InterpolatedVariable": "HAZARDRATES",
+      "InterpolationMethod": "LINEARINTERPOLATION",
+      "calendar": "CNY",
+      "DayCounter": "Act365Fixed"
+    }
+  ],
+  "BondSpreadCurve": [
+    {
+      "curve_id": "CNY_BOND_POLICY_SPREAD",
+      "data_source": "two_curves",
+      "referenceDate": "20260827",
+      "benchmark_curve": "CNY_BOND_TREASURY",
+      "spread_adjusted_curve": "CNY_BOND_POLICY",
+      "InterpolatedVariable": "ZERORATES",
+      "InterpolationMethod": "LINEARINTERPOLATION",
+      "DayCounter": "Act365Fixed"
+    }
+  ],
+  "ForwardCurve": [
+    {
+      "curve_id": "EQ_FORWARD",
+      "ReferenceDate": "20260827",
+      "InterpolationMethod": "LINEARINTERPOLATION",
+      "ExpiryDates": ["20260928", "20261127", "20270226"],
+      "UnderlyingRates": [100.5, 101.2, 102.0]
+    }
+  ],
+  "VolSurface": [
+    {
+      "curve_id": "EQ_VOL_SAMPLE",
+      "ReferenceDate": "20260827",
+      "SpotPx": 100.0,
+      "Dividend": 0.02,
+      "UsingImpVols": true,
+      "SmileInterpolation": "CUBICSPLINE",
+      "risk_free_rate_curve": "CNYDEPO",
+      "calendar": "CNY",
+      "MiniStrikeSize": 5,
+      "ExpiryDates": [
+        "20260928", "20260928", "20260928", "20260928", "20260928",
+        "20261127", "20261127", "20261127", "20261127", "20261127"
+      ],
+      "OptionTypes": [
+        "CALL", "CALL", "CALL", "CALL", "CALL",
+        "CALL", "CALL", "CALL", "CALL", "CALL"
+      ],
+      "Strikes": [90.0, 95.0, 100.0, 105.0, 110.0, 90.0, 95.0, 100.0, 105.0, 110.0],
+      "Premiums": [10.8, 6.4, 3.2, 1.4, 0.55, 12.1, 7.8, 4.6, 2.5, 1.2],
+      "ImpVols": [0.24, 0.22, 0.20, 0.21, 0.23, 0.25, 0.23, 0.21, 0.22, 0.24]
+    }
+  ]
+}

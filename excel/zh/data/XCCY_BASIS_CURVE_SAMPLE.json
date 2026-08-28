@@ -1,0 +1,97 @@
+{
+  "_metadata": {
+    "description": "XCCY 基差曲线（CrossCurrencySpreadCurve）市场数据样例 / 数据契约草案",
+    "purpose": "为 Valuation Engine 集成货币基差曲线（XCCY_FUNDING 策略）定义 snapshot JSON 段格式。VE 当前尚无 XCCYBasisCurve 段消费者，本文件为契约样例。",
+    "validated_by": "mcp-core-projects-VS2022/core-examples/testMcpLib5.cpp::testXccyBasisCurve (T1/T2/T3 全部通过, 2026-07-31)",
+    "conventions": {
+      "curve_class": "mcp::CrossCurrencySpreadCurve（SpreadCurve 子类，Term 货币折现曲线 = underlying + spread）",
+      "leg_convention": "QAG/MX 约定（MktInstruments::BuildCrossCurrencyBasisSwaps）：base leg = 非 USD 货币（CNY，Pay 浮动 + spread 报价），term leg = USD（Receive 浮动 flat）；term 名义 = (1/FXSpotRate) * base 名义",
+      "fx_convention": "Pair 以 USD 开头时（USD/CNY），传入引擎/构造器的 fx = 1/FXSpotRate（见 MktYldCurves::BuildXCB 的取倒数逻辑）",
+      "spread_sign": "spread 报价在 base（非 USD）腿上，单位 decimal。正 spread ≈ 非 USD 货币资金成本高于 clean 曲线（dirty = clean + s 的一阶近似）",
+      "solved_curve": "解出的曲线 = base 货币（CNY）折现曲线；构造时该槽位传 null（CrossCurrencySpreadCurve 构造器自动将本曲线置入对应定价槽）",
+      "quote_source_note": "Path A 报价源引用既有 FXForwardPointsCurve 段（FXForwardPointsCurve: <curve_id>），Tenors/ForwardPoints/FXSpotRate/ScaleFactor 全部取自被引用曲线，禁止在本文件中重复报价；仅当被引 FXFP 曲线不存在时才允许 Quotes.FXForwardPoints 内联报价作为覆盖。BasisSwapSpreads 块为基差互换报价路径（Path B，T2 验证，双路径解曲线 DF 一致至 3e-8）"
+    },
+    "ctor_argument_mapping": {
+      "referenceDate": "ReferenceDate（Path A2 模式下取自被引 FXFP 曲线的 ReferenceDate）",
+      "calibrationSet": "由被引 FXFP 曲线 spot 后 pillar（FXForwardPoints(date) 查询）生成 FXForwardPoint instruments，或由 Quotes.BasisSwapSpreads 生成 CrossCurrencySwap instruments",
+      "underlyingCurve": "UnderlyingCurve（clean CNY 曲线，spread 叠加其上）",
+      "interpolatedVariable": "InterpolatedVariable（推荐 SPREADS）",
+      "interpolationMethod": "InterpolationMethod",
+      "useGlobalSolver": "Solver == GLOBAL",
+      "spreadExtrapolation": "SpreadExtrapolation",
+      "estimationCurve1": "BaseLegEstimationCurve（CNY 浮动腿远期估计 = clean CNY）",
+      "discountingCurve1": "BaseLegDiscountingCurve = null -> 待解本曲线（CNY 折现）",
+      "estimationCurve2": "TermLegEstimationCurve（USD 浮动腿远期估计）",
+      "discountingCurve2": "TermLegDiscountingCurve（USD 折现）",
+      "fx": "1 / FXSpotRate（USD-prefixed pair）"
+    },
+    "pitfalls": [
+      "构造输入收益率曲线时插值变量必须用 CONTINUOUSRATES：本库 ZERORATES 分支节点换算为 pow(1/DF,t)-1（非 1/t 幂），节点 DF 无法复现（t^3 畸变）",
+      "bootstrap 只钉住 DF(spot->T) 比率：spread/零息检查须从 SpotDate 起算，ref->spot 段绝对水平不在目标函数中",
+      "基差互换公平 margin 精确值受远期复利/应计约定影响（样例中 +13.2bp ≈ 零息 spread +15bp 的一阶值）",
+      "FXForwardPoint 的 label 必须是合法 Period 字符串（末字符 d/w/m/y，如 3M/1Y）：spot->pillar 由 xccyPeriodLabel 生成；spot 后非整数月 pillar（如 18M）也可用",
+      "被引 FXFP 曲线的 ON/TN/SN/SW 等 spot 前节点不参与基差校准（FXForwardPoint start=spot 要求 end>spot），自动过滤"
+    ]
+  },
+
+  "XCCYBasisCurve": [
+    {
+      "curve_id": "USDCNY_XCCY_BASIS",
+      "ReferenceDate": "20260311",
+      "Pair": "USD/CNY",
+
+      "UnderlyingCurve": "CNYDEPO",
+      "BaseLegEstimationCurve": "CNYDEPO",
+      "BaseLegDiscountingCurve": null,
+      "TermLegEstimationCurve": "USDDEPO",
+      "TermLegDiscountingCurve": "USDDEPO",
+
+      "InterpolatedVariable": "SPREADS",
+      "InterpolationMethod": "LINEARINTERPOLATION",
+      "SpreadExtrapolation": "NOSPREAD",
+      "Solver": "LOCAL",
+
+      "QuoteType": "FX_FORWARD_POINTS_CURVE",
+      "Quotes": {
+        "FXForwardPointsCurve": "USDCNY_FXFP",
+        "_comment": "引用同 snapshot FXForwardPointsCurve 段：ReferenceDate/SpotDate/FXSpotRate(6.86625)/ScaleFactor(1e4)/pillar 报价全部取自 USDCNY_FXFP，spot 后节点（3M=-383, 6M=-741, 1Y=-1385.5, 2Y=-2560, 3Y=-3705, 5Y=-6120 等）参与校准；对应 mcplib MXccyBasisCurve Path A2 / Excel McpXccyBasisCurve Path A2 签名"
+      }
+    },
+    {
+      "curve_id": "USDCNY_XCCY_BASIS_SWAP",
+      "ReferenceDate": "20260311",
+      "Pair": "USD/CNY",
+      "FXSpotRate": 7.0992,
+      "SpotDate": "20260313",
+      "ScaleFactor": 10000,
+
+      "UnderlyingCurve": "CNY_CLEAN_ZERO",
+      "BaseLegEstimationCurve": "CNY_CLEAN_ZERO",
+      "BaseLegDiscountingCurve": null,
+      "TermLegEstimationCurve": "USD_ZERO",
+      "TermLegDiscountingCurve": "USD_ZERO",
+
+      "InterpolatedVariable": "SPREADS",
+      "InterpolationMethod": "LINEARINTERPOLATION",
+      "SpreadExtrapolation": "NOSPREAD",
+      "Solver": "LOCAL",
+
+      "QuoteType": "BASIS_SWAP_SPREAD",
+      "Quotes": {
+        "BasisSwapSpreads": {
+          "_comment": "合成样例（testXccyBasisCurve T2）：flat USD 4.30% / CNY clean 1.80% / 基差 +15bp 下的公平 margin（3M 复利/应计约定下 ≈ +13.2bp）。spread 在 CNY（base）腿上，decimal 单位",
+          "Tenors": ["3M", "6M", "1Y", "2Y", "3Y", "5Y"],
+          "Spreads": [0.00132321, 0.00132110, 0.00132098, 0.00132137, 0.00132402, 0.00132906],
+          "SwapConventions": {
+            "BaseLegFrequency": "3M",
+            "TermLegFrequency": "3M",
+            "BaseLegDayCounter": "Act365Fixed",
+            "TermLegDayCounter": "Act365Fixed",
+            "NotionalExchange": true,
+            "Resettable": false
+          }
+        }
+      }
+    }
+  ]
+}

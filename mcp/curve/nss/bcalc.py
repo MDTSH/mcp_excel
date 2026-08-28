@@ -1,8 +1,8 @@
 import argparse
 import sys
 # from errors import Error
-import numpy as np
-import pandas as pd
+from mcp.optional_deps import numpy as np
+from mcp.optional_deps import pandas as pd
 from datetime import date, datetime, timedelta
 
 from scipy.optimize import minimize

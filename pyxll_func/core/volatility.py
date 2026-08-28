@@ -21,8 +21,8 @@ import logging
 # =========================
 # Third Party Libraries
 # =========================
-import numpy as np
-import pandas as pd
+from mcp.optional_deps import numpy as np
+from mcp.optional_deps import pandas as pd
 from pyxll import xl_arg, xl_func, xl_return
 
 # =========================
@@ -410,6 +410,8 @@ def HvsGetVol(hv, referenceDate, sampleNum=0):
     """
     从历史波动率对象获取某日波动率（可选样本数）。
     """
+    if hv is None or isinstance(hv, str):
+        return hv if hv else "HvsGetVol: HistVols 为空"
     s = hv.GetVol(mcp_dt.to_date1(referenceDate), sampleNum)
     return s
 
@@ -654,6 +656,43 @@ def FXVolSurfaceGetSpot(vs):
     return vs.GetSpot()
 
 
+# ---------------------------------------------------------------------------
+# FX VV/OVML conventions getters
+#
+# DeltaType / ATMVolType 通过 fxVolSurface 内部 findClosestXxxType(expiryDate)
+# 解析: BBG 在 1Y 边界处切换 (Spot vs Forward delta, DNS vs ATMF)。
+# PremiumAdjusted 是货币对级别 (m_premiumAdjusted), 与到期无关。
+# 返回字符串与 mcp.utils.enums.DeltaType / ATMVolType 名称对齐，便于 Excel 调用。
+# ---------------------------------------------------------------------------
+_DELTA_TYPE_STR = {0: "SPOT_DELTA", 1: "FORWARD_DELTA"}
+_ATM_VOL_TYPE_STR = {1: "DELTA_NEUTRAL_STRADDLE", 2: "FORWARD_STRIKE", 3: "SPOT_STRIKE"}
+
+
+@xl_func("var vs,datetime expiryDate: var", macro=False, recalc_on_open=True)
+def FXVolSurfaceGetDeltaType(vs, expiryDate):
+    if not is_vol_surface(vs):
+        return vs
+    expiryDate = pf_date(expiryDate)
+    raw = vs.GetDeltaType(expiryDate)
+    return _DELTA_TYPE_STR.get(int(raw), str(raw))
+
+
+@xl_func("var vs,datetime expiryDate: var", macro=False, recalc_on_open=True)
+def FXVolSurfaceGetATMVolType(vs, expiryDate):
+    if not is_vol_surface(vs):
+        return vs
+    expiryDate = pf_date(expiryDate)
+    raw = vs.GetATMVolType(expiryDate)
+    return _ATM_VOL_TYPE_STR.get(int(raw), str(raw))
+
+
+@xl_func("var vs", macro=False, recalc_on_open=True)
+def FXVolSurfaceGetPremiumAdjusted(vs):
+    if not is_vol_surface(vs):
+        return vs
+    return bool(vs.GetPremiumAdjusted())
+
+
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("vs", "var")
 @xl_arg("expiryOrDeliveryDate", "datetime")
@@ -676,15 +715,15 @@ def VolSurfaceGetDomesticRate(vs, expiryOrDeliveryDate, isDeliveryDate):
     return vs.GetDomesticRate(expiryOrDeliveryDate, isDeliveryDate)
 
 
-@xl_func(macro=False, recalc_on_open=True)
-@xl_arg("vs", "var")
-@xl_arg("expiryOrDeliveryDate", "datetime")
-@xl_arg("isDeliveryDate", "bool")
-def VolSurfaceGetForward(vs, expiryOrDeliveryDate, isDeliveryDate):
-    if not is_vol_surface(vs):
-        return vs
-    expiryOrDeliveryDate = pf_date(expiryOrDeliveryDate)
-    return vs.GetForward(expiryOrDeliveryDate, isDeliveryDate)
+# @xl_func(macro=False, recalc_on_open=True)
+# @xl_arg("vs", "var")
+# @xl_arg("expiryOrDeliveryDate", "datetime")
+# @xl_arg("isDeliveryDate", "bool")
+# def VolSurfaceGetForward(vs, expiryOrDeliveryDate, isDeliveryDate):
+#     if not is_vol_surface(vs):
+#         return vs
+#     expiryOrDeliveryDate = pf_date(expiryOrDeliveryDate)
+#     return vs.GetForward(expiryOrDeliveryDate, isDeliveryDate)
 
 
 @xl_func(macro=False, recalc_on_open=True)
@@ -730,7 +769,7 @@ def VolSurfaceGetForward(vs, expiryOrDeliveryDate, isDeliveryDate):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-def VolSurfaceGetRiskFreeRate(vs, expiryOrDeliveryDate, isDeliveryDate):
+def VolSurfaceGetRiskFreeRate(vs, expiryOrDeliveryDate, isDeliveryDate=False):
     args = [vs, expiryOrDeliveryDate, isDeliveryDate]
     try:
         return tool_def.xls_call(*args, key="McpVolSurface", method="GetRiskFreeRate")
@@ -739,6 +778,15 @@ def VolSurfaceGetRiskFreeRate(vs, expiryOrDeliveryDate, isDeliveryDate):
         logging.warning(s, exc_info=True)
         return s
 
+@xl_func(macro=False, recalc_on_open=True)
+def VolSurfaceGetDividend(vs):
+    args = [vs]
+    try:
+        return tool_def.xls_call(*args, key="McpVolSurface", method="GetDividend")
+    except Exception:
+        s = f"VolSurfaceGetDividend except: {args}"
+        logging.warning(s, exc_info=True)
+        return s
 
 @xl_func(macro=False, recalc_on_open=True)
 def VolSurfaceStrikeFromString(vs, s, callPut, expiryDate, spotPx, forwardPx):
@@ -1089,6 +1137,65 @@ def McpFXVolSurface2(args1, args2, args3, args4, args5, fmt="VP"):
         return s
 
 
+def _unwrap_mfx_vol_surface2(vs):
+    if vs is None:
+        return None
+    if hasattr(vs, "_mcp_inner"):
+        return vs._mcp_inner
+    if hasattr(vs, "getInstance"):
+        return vs.getInstance()
+    return vs
+
+
+def _fx_vol_surface2_expiry_str(expiryDate):
+    """Excel 到期日可能是序列号(46121)或 Calendar UDF 返回的 datetime。"""
+    from mcp.utils.mcp_utils import excel_date_to_string, mcp_dt
+
+    if expiryDate is None:
+        return ""
+    if isinstance(expiryDate, (int, float)) and not isinstance(expiryDate, bool):
+        return excel_date_to_string(float(expiryDate))
+    if hasattr(expiryDate, "strftime"):
+        return mcp_dt.to_date1(expiryDate)
+    return str(expiryDate).strip()
+
+
+def _fx_vol_surface2_get_volatility(
+    vs,
+    strike_or_delta,
+    expiryDate,
+    bidMidAsk="MID",
+    midForward=0.0,
+    bidInputDeltaVolPair="",
+    asknputDeltaVolPair="",
+):
+    """
+    直接调 MFXVolSurface2::GetVolatility（char* delta / double strike 重载）。
+    勿走 tool_def.xls_call：其对 strike 固定为 float，且 GetVolatilityByDeltaStr 在 SWIG 上不存在。
+    """
+    inner = _unwrap_mfx_vol_surface2(vs)
+    if inner is None:
+        raise ValueError("FX vol surface is empty")
+    exp = _fx_vol_surface2_expiry_str(expiryDate)
+    bma = str(bidMidAsk or "MID").strip() or "MID"
+    mf = float(midForward or 0.0)
+    bid_p = "" if bidInputDeltaVolPair in (None, "", '""') else str(bidInputDeltaVolPair)
+    ask_p = "" if asknputDeltaVolPair in (None, "", '""') else str(asknputDeltaVolPair)
+    use_delta = False
+    if isinstance(strike_or_delta, str):
+        try:
+            float(strike_or_delta.strip())
+        except ValueError:
+            use_delta = True
+    if use_delta:
+        return inner.GetVolatility(
+            str(strike_or_delta).strip(), exp, bma, mf, bid_p, ask_p
+        )
+    return inner.GetVolatility(
+        float(strike_or_delta), exp, bma, mf, bid_p, ask_p
+    )
+
+
 @xl_func(macro=False, recalc_on_open=True)
 def FXVolSurface2GetVolatility(
     vs,
@@ -1099,19 +1206,18 @@ def FXVolSurface2GetVolatility(
     bidInputDeltaVolPair="",
     asknputDeltaVolPair="",
 ):
-    args = [
-        vs,
-        strike,
-        expiryDate,
-        bidMidAsk,
-        midForward,
-        json.dumps(bidInputDeltaVolPair),
-        json.dumps(asknputDeltaVolPair),
-    ]
     try:
-        return tool_def.xls_call(*args, key="McpFXVolSurface2", method="GetVolatility")
-    except Exception:
-        s = f"FXVolSurface2GetVolatility except: {args}"
+        return _fx_vol_surface2_get_volatility(
+            vs,
+            strike,
+            expiryDate,
+            bidMidAsk,
+            midForward,
+            bidInputDeltaVolPair,
+            asknputDeltaVolPair,
+        )
+    except Exception as e:
+        s = f"FXVolSurface2GetVolatility except: {e}"
         logging.warning(s, exc_info=True)
         return s
 
@@ -1126,19 +1232,18 @@ def FXVolSurface2GetVolatilityByDeltaStr(
     bidInputDeltaVolPair="",
     asknputDeltaVolPair="",
 ):
-    args = [
-        vs,
-        deltaString,
-        expiryDate,
-        bidMidAsk,
-        midForward,
-        json.dumps(bidInputDeltaVolPair),
-        json.dumps(asknputDeltaVolPair),
-    ]
     try:
-        return tool_def.xls_call(*args, key="McpFXVolSurface2", method="GetVolatilityByDeltaStr")
-    except Exception:
-        s = f"FXVolSurface2GetVolatility except: {args}"
+        return _fx_vol_surface2_get_volatility(
+            vs,
+            deltaString,
+            expiryDate,
+            bidMidAsk,
+            midForward,
+            bidInputDeltaVolPair,
+            asknputDeltaVolPair,
+        )
+    except Exception as e:
+        s = f"FXVolSurface2GetVolatilityByDeltaStr except: {e}"
         logging.warning(s, exc_info=True)
         return s
 
@@ -1249,6 +1354,17 @@ def FXVolSurface2GetSpotDate(vs):
         return tool_def.xls_call(*args, key="McpFXVolSurface2", method="GetSpotDate")
     except Exception:
         s = f"FXVolSurface2GetSpotDate except: {args}"
+        logging.warning(s, exc_info=True)
+        return s
+
+
+@xl_func(macro=False, recalc_on_open=True)
+def FXVolSurface2GetCalendar(vs):
+    args = [vs]
+    try:
+        return tool_def.xls_call(*args, key="McpFXVolSurface2", method="GetCalendar")
+    except Exception:
+        s = f"FXVolSurface2GetCalendar except: {args}"
         logging.warning(s, exc_info=True)
         return s
 
@@ -1657,6 +1773,13 @@ def LocalVolGetSpot(vs):
 
 @xl_func(macro=False, recalc_on_open=False)
 @xl_arg("vs", "object")
+def LocalVolGetCalendar(vs):
+    if not isinstance(vs, mcp.wrapper.McpLocalVol):
+        return "Invalid McpLocalVol"
+    return vs.GetCalendar()
+
+@xl_func(macro=False, recalc_on_open=False)
+@xl_arg("vs", "object")
 @xl_arg("expiryOrDeliveryDate", "datetime")
 @xl_arg("isDeliveryDate", "bool")
 def LocalVolGetForward(vs, expiryOrDeliveryDate,isDeliveryDate):
@@ -1753,6 +1876,22 @@ def LocalVolVolatilities(vs, fmt='V'):
 def LocalVolGetVolatility(vs, strike, expiry):
     s = vs.GetVolatility(strike, date_to_string(expiry))
     return s
+
+@xl_func(macro=False, recalc_on_open=False)
+@xl_arg("vs", "object")
+def LocalVolGetImpliedForwardCurve(vs):
+    if not isinstance(vs, mcp.wrapper.McpLocalVol):
+        return "Invalid McpLocalVol"
+    handler = vs.GetImpliedForwardCurve()
+    return mcp.wrapper.McpForwardCurve(handler)
+
+@xl_func(macro=False, recalc_on_open=False)
+@xl_arg("vs", "object")
+def LocalVolGetImpliedDividendCurve(vs):
+    if not isinstance(vs, mcp.wrapper.McpLocalVol):
+        return "Invalid McpLocalVol"
+    handler = vs.GetImpliedDividendCurve()
+    return mcp.wrapper.McpYieldCurve(handler)
 
 # =========================
 # 期权数据封装

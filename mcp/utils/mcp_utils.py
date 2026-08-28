@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timedelta
 import re
-import pandas as pd
+from mcp.optional_deps import pandas as pd
 
 debug_del_info = False
 debug_args_info = False
@@ -55,7 +55,6 @@ def parse_date(date):
     return dt
 
 ## 返回excel日期格式
-import pandas as pd
 from datetime import datetime
 
 def parse_excel_date(date_str):
@@ -70,6 +69,10 @@ def parse_excel_date(date_str):
     pd.Timestamp: 解析后的日期对象，如果无法解析则返回 pd.NaT。
     """
     # 如果输入是 datetime.datetime 类型，直接转换为 pd.Timestamp
+
+    if date_str is None or date_str == "":
+        return datetime.now()
+
     if isinstance(date_str, datetime):
         return pd.Timestamp(date_str)
     
@@ -252,6 +255,17 @@ class McpDateTime():
 mcp_dt = McpDateTime()
 
 
+def normalize_yield_curve_ref_date_str(s):
+    """MYieldCurve::GetRefDate 曾误把 Date::ToString 当格式串，产生如 2024YYYY/MM/DD10YYYY/MM/DD15；C++ 已改为 ToStringFormat。此处兼容旧 DLL。"""
+    if not isinstance(s, str) or "YYYY/MM/DD" not in s:
+        return s
+    m = re.match(r"^(\d{4})YYYY/MM/DD(\d{1,2})YYYY/MM/DD(\d{1,2})$", s)
+    if m:
+        y, mo, d = m.groups()
+        return f"{y}/{int(mo):02d}/{int(d):02d}"
+    return s
+
+
 def as_array(s, fmt, do_load=True):
     arr = s
     if isinstance(s, list):
@@ -305,3 +319,36 @@ def is_float(v):
         return True
     except:
         return False
+
+
+def check_data_not_empty(data, keylist):
+    """
+    检查数据对象中指定键列表的值是否为空
+
+    参数:
+        data: 数据对象（字典）
+        keylist: 要检查的键列表
+
+    返回:
+        bool: 如果所有键都有非空值返回True，否则返回False
+    """
+    for key in keylist:
+        # 检查键是否存在
+        if key not in data:
+            return False
+
+        value = data[key]
+
+        # 检查值是否为空
+        # 空列表、None、空字符串都视为空
+        if value is None:
+            return False
+        elif isinstance(value, (list, tuple, str)):
+            if len(value) == 0:
+                return False
+        elif isinstance(value, dict):
+            if len(value) == 0:
+                return False
+
+    return True
+

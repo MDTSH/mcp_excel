@@ -3,8 +3,8 @@ import json
 import mcp.forward.compound
 import mcp.forward.custom
 import mcp.wrapper
-import numpy as np
-import pandas as pd
+from mcp.optional_deps import numpy as np
+from mcp.optional_deps import pandas as pd
 
 from mcp.utils.excel_utils import pf_nd_arrary_or_list
 import mcp.tool.args_parser as args_parser

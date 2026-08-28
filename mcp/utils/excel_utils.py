@@ -1,13 +1,14 @@
 import json
+import math
+import re
 import time
 from datetime import datetime, timedelta, date
 
-import numpy
-import pandas as pd
-from pandas import DataFrame
+from mcp.optional_deps import is_dataframe, is_na, is_ndarray, is_timestamp
+from mcp.optional_deps import pandas as pd
 
 from mcp.utils.enums import enum_wrapper
-from mcp.utils.mcp_utils import mcp_dt, mcp_const
+from mcp.utils.mcp_utils import mcp_dt, mcp_const, parse_excel_date
 from mcp.wrapper import is_mcp_wrapper
 
 
@@ -52,6 +53,7 @@ class MethodName():
     McpBillCurveData2 = "McpBillCurveData2"
     McpBillFutureCurveData = "McpBillFutureCurveData"
     McpBillFutureCurveData2 = "McpBillFutureCurveData2"
+    McpFRACurveData = "McpFRACurveData"
     McpVanillaSwapCurveData = "McpVanillaSwapCurveData"
     McpVanillaSwapCurveData2 = "McpVanillaSwapCurveData2"
     McpVanillaSwapCurveData3 = "McpVanillaSwapCurveData3"
@@ -185,25 +187,115 @@ def pf_mcp_plain_list(val):
     try:
         if isinstance(val, list):
             return pf_object_list(val)
-        else:
-            json.loads(val)
-            return val
-    except:
+        s = str(val).strip()
+        if s == "":
+            raise Exception("Parse list Exception: empty value")
+        # 已是合法 JSON（如 ["ON","1W"] 或 [-5.5,-66.3]）
+        try:
+            json.loads(s)
+            return s
+        except json.JSONDecodeError:
+            pass
+        # 兼容 Excel 方括号无引号格式：[ON,1W,1M] / [ON, 1W, 1M]
+        if s.startswith("[") and s.endswith("]"):
+            inner = s[1:-1].strip()
+            if inner == "":
+                return "[]"
+            parts = [p.strip() for p in inner.split(",") if p.strip() != ""]
+            return json.dumps(parts)
         raise Exception("Parse list Exception:" + str(val))
+    except Exception as e:
+        if "Parse list Exception" in str(e):
+            raise
+        raise Exception("Parse list Exception:" + str(val))
+
+
+# OptionTypes 列表专用解析器：兼容 ["PUT","CALL",...] / [1,0,...] / [1.0,0.0,...]
+# 统一输出整数 JSON 字符串 '[0,1,...]'，C++ 端 StaticParse::char2VecCallPutType
+# 通过 cJSON valueint 即可正确读取。
+# 修复 bug：之前 plainlist 直接把 ["PUT","CALL"] 透传给 C++，C++ 用 valueint
+# 读字符串项始终得 0，导致所有 PUT 被静默吞成 CALL（LocalVol 校准全错）。
+def pf_mcp_option_type_list(val):
+    if val is None:
+        return "[]"
+    try:
+        if isinstance(val, str):
+            s = val.strip()
+            if s == "":
+                return "[]"
+            lst = json.loads(s)
+        elif isinstance(val, list):
+            lst = list(val)
+        elif is_ndarray(val):
+            lst = val.tolist()
+        elif hasattr(val, "__iter__"):
+            lst = list(val)
+        else:
+            lst = [val]
+    except Exception:
+        raise Exception("Parse OptionTypes Exception: " + str(val))
+
+    if not isinstance(lst, list):
+        raise Exception("OptionTypes must be a list, got: " + str(type(lst)))
+
+    out = []
+    for idx, item in enumerate(lst):
+        try:
+            if isinstance(item, bool):
+                # bool 是 int 子类，单独处理避免 True->1->PUT 之外的歧义
+                out.append(1 if item else 0)
+            elif isinstance(item, (int, float)):
+                iv = int(item)
+                if iv not in (0, 1):
+                    raise ValueError(f"OptionType int must be 0 or 1, got {item}")
+                out.append(iv)
+            elif isinstance(item, str):
+                s = item.strip().upper()
+                if s in ("CALL", "C"):
+                    out.append(0)
+                elif s in ("PUT", "P"):
+                    out.append(1)
+                elif s in ("0",):
+                    out.append(0)
+                elif s in ("1",):
+                    out.append(1)
+                else:
+                    raise ValueError(
+                        f"OptionType string must be CALL/PUT/C/P or 0/1, got {item!r}"
+                    )
+            else:
+                raise ValueError(f"Unsupported OptionType type: {type(item).__name__}")
+        except Exception as e:
+            raise Exception(
+                f"Parse OptionTypes Exception at index {idx}: {e} (raw={item!r})"
+            )
+    return json.dumps(out)
+
+
+def _parse_date_list_item(item):
+    """单元素：Excel 序列号、YYYY-MM-DD / YYYY/MM/DD 字符串、datetime。"""
+    if isinstance(item, datetime):
+        return item
+    if isinstance(item, date):
+        return datetime(item.year, item.month, item.day)
+    ts = parse_excel_date(item)
+    if ts is None or is_na(ts):
+        raise ValueError(f"cannot parse date: {item!r}")
+    if is_timestamp(ts):
+        return ts.to_pydatetime()
+    return ts
 
 
 def pf_mcp_date_list(val):
     try:
-        xl_dts = json.loads(val)
-        dts = [mcp_dt.parse_excel_date(float(item)) for item in xl_dts]
+        if isinstance(val, list):
+            xl_dts = val
+        else:
+            xl_dts = json.loads(val)
+        dts = [_parse_date_list_item(item) for item in xl_dts]
         ss = mcp_dt.to_date_list(dts, mcp_dt.to_date1)
-        result = json.dumps(ss)
-        print("xl_dts:", xl_dts)
-        print("dts:", dts)
-        print("ss:", ss)
-        print("result:", result)
-        return result
-    except:
+        return json.dumps(ss)
+    except Exception:
         raise Exception("Parse date list Exception:" + str(val))
 
 
@@ -259,7 +351,7 @@ def pf_int_bool(val):
 
 
 def pf_float(val):
-    if val is None:
+    if val is None or val == "":
         return None
     f = 0
     try:
@@ -324,8 +416,122 @@ def pf_const(val, enum_name=None):
     return enum_wrapper.parse2(val, enum_name)
 
 
+def _is_mcp_excel_object(val):
+    if val is None or isinstance(val, str):
+        return False
+    return is_mcp_wrapper(val) or hasattr(val, "getHandler")
+
+
+_VP_RANGE_IN_FORMULA = re.compile(
+    r"^\s*=?\s*\w+\s*\(\s*("
+    r"'(?:[^']|'')+'!\$?[A-Za-z]{1,3}\$?\d+:\$?[A-Za-z]{1,3}\$?\d+"
+    r"|\$?[A-Za-z]{1,3}\$?\d+:\$?[A-Za-z]{1,3}\$?\d+"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def get_vp_range_address_from_caller():
+    """从调用格公式解析第一个 VP 区域地址（如 A59:B70）。"""
+    try:
+        from pyxll import xl_app, xlfCaller
+
+        caller = xlfCaller()
+        xl = xl_app()
+        formula = xl.Range(str(caller)).Formula
+        if not isinstance(formula, str):
+            return None
+        m = _VP_RANGE_IN_FORMULA.match(formula)
+        return m.group(1) if m else None
+    except Exception:
+        return None
+
+
+def hydrate_vp_object_fields(vp_array, object_keys=None, kv_range_addr=None):
+    """
+    PyXLL 以 var[][] 批量传入 VP 时，对象类型单元格常为 None。
+    按 KV 行号用 xl_app 重读 B 列（或区域第 2 列）的实际对象。
+    """
+    if not vp_array:
+        return vp_array
+    if object_keys is None:
+        object_keys = frozenset(
+            {
+                "leg1",
+                "leg2",
+                "calendar",
+                "fxforwardpointscurve2_1",
+                "fxforwardpointscurve2_2",
+                "foreigncurve2",
+                "domesticcurve2",
+            }
+        )
+    if kv_range_addr is None:
+        kv_range_addr = get_vp_range_address_from_caller()
+    if not kv_range_addr:
+        return vp_array
+    try:
+        from pyxll import xl_app
+
+        rng = xl_app().Range(kv_range_addr)
+        app = rng.Application
+        base_row, base_col = int(rng.Row), int(rng.Column)
+    except Exception:
+        return vp_array
+
+    out = []
+    for i, row in enumerate(vp_array):
+        if row is None:
+            out.append(row)
+            continue
+        row = list(row)
+        if len(row) >= 2:
+            key = str(row[0]).strip().lower()
+            if key in object_keys and not _is_mcp_excel_object(row[1]):
+                try:
+                    resolved = app.Cells(base_row + i, base_col + 1).Value
+                    if _is_mcp_excel_object(resolved):
+                        row[1] = resolved
+                except Exception:
+                    pass
+        out.append(row)
+    return out
+
+
+def hydrate_vp_args_blocks(args_blocks, object_keys=None):
+    """对 Mcp* VP 构造函数的 var[][] 参数块做对象字段补水。"""
+    if not args_blocks:
+        return args_blocks
+    out = list(args_blocks)
+    kv_addr = get_vp_range_address_from_caller()
+    for i, block in enumerate(out):
+        if not block or not isinstance(block, list):
+            continue
+        if len(block) >= 1 and isinstance(block[0], (list, tuple)) and len(block[0]) >= 2:
+            out[i] = hydrate_vp_object_fields(block, object_keys, kv_addr)
+            break
+    return out
+
+
 def pf_object(val):
+    if _is_mcp_excel_object(val):
+        return val
     if isinstance(val, str):
+        s = val.strip()
+        if s.startswith("="):
+            s = s[1:].strip()
+        if re.match(
+            r"^('(?:[^']|'')+'!)?\$?[A-Za-z]{1,3}\$?\d+(:\$?[A-Za-z]{1,3}\$?\d+)?$",
+            s,
+        ):
+            try:
+                from pyxll import xl_app
+
+                resolved = xl_app().Range(s).Value
+                if _is_mcp_excel_object(resolved):
+                    return resolved
+            except Exception:
+                pass
         raise Exception("Invalid object: " + val)
     return val
 
@@ -335,13 +541,22 @@ def pf_json_list(val):
 
 
 def pf_nd_arrary_or_list(val):
-    if isinstance(val, numpy.ndarray):
+    if is_ndarray(val):
         return val.tolist()
     else:
         return val
 
 
 def pf_object_list(val):
+    # 如果输入已经是合法的 JSON 数组字符串（如 McpList 的输出），直接返回，
+    # 避免 json.dumps 再包一层引号导致 C++ parseVec* 收到 JSON string 而非 JSON array。
+    if isinstance(val, str):
+        try:
+            parsed = json.loads(val)
+            if isinstance(parsed, list):
+                return val
+        except Exception:
+            pass
     return json.dumps(pf_nd_arrary_or_list(val))
 
 
@@ -371,6 +586,66 @@ def pf_array_date_json(val):
     return json.dumps(temp)
 
 
+def _sdp_schedule_dates_sequence_clean(seq):
+    """去掉空/NaN，保留 McpList 等来源的 Excel 序列号(float)与日期字符串。"""
+    out = []
+    for item in fmt_xls_array(seq):
+        if item is None:
+            continue
+        if isinstance(item, float) and math.isnan(item):
+            continue
+        if isinstance(item, str) and not item.strip():
+            continue
+        out.append(item)
+    return out
+
+
+def normalize_sdp_schedule_dates_json(raw):
+    """
+    SDP 显式观察日列表：多种写法统一为 JSON 字符串数组（元素为日期字符串，与 pf_date 一致），
+    例如 '["2022-11-15","2022-12-15"]'，可供 C++ StaticParse::parseVecDate 或
+    StructuredDerivativeProduct 的 additionalStringValues 使用。
+
+    支持：
+    - JSON 数组字符串：'["20221115","20221215"]' 或 '["2022-11-15", ...]'
+    - 逗号分隔：'2022-11-15, 2022-12-15'
+    - 分号分隔：'2022-11-15; 2022-12-15'（若同时含分号，优先按分号切分）
+    - list / tuple / 单单元格值（含 McpList 返回的 Excel 日期序列号 float 列表）
+
+    返回 None 表示无有效日期（空）。
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return None
+        if s.startswith('['):
+            try:
+                arr = json.loads(s)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"SDP schedule dates: invalid JSON array: {e}") from e
+            if not isinstance(arr, list) or len(arr) == 0:
+                return None
+            arr = _sdp_schedule_dates_sequence_clean(arr)
+            if len(arr) == 0:
+                return None
+            return pf_array_date_json(arr)
+        if ';' in s:
+            parts = [p.strip() for p in s.split(';') if p.strip()]
+        else:
+            parts = [p.strip() for p in s.split(',') if p.strip()]
+        if not parts:
+            return None
+        return pf_array_date_json(parts)
+    if isinstance(raw, (list, tuple)):
+        seq = _sdp_schedule_dates_sequence_clean(list(raw))
+        if len(seq) == 0:
+            return None
+        return pf_array_date_json(seq)
+    return pf_array_date_json([raw])
+
+
 def pf_array_json(val):
     return json.dumps(fmt_xls_array(val))
 
@@ -381,7 +656,7 @@ def parse_dict_list(args):
         for key in args:
             result.append([key, args[key]])
         return result
-    elif isinstance(args, DataFrame):
+    elif is_dataframe(args):
         result = []
         cols = args.columns.tolist()
         for col in cols:
@@ -407,6 +682,7 @@ class KeyValueWrapper():
             "curve": pf_mcp_handler,
             "list": pf_mcp_list,
             "plainlist": pf_mcp_plain_list,
+            "optiontypelist": pf_mcp_option_type_list,
             "datelist": pf_mcp_date_list,
             "object": pf_object,
             "mcphandler": pf_mcp_handler,
@@ -561,23 +837,8 @@ class KeyValueWrapper():
         lack_keys = self.validate_all_fields(method, result)
         return result, lack_keys, raw_dict
 
-    def valid_parse(self, method, args_list, fmt, data_fields, kvs, kvs2=None):
-        # args = mcp_kv_wrapper.std_all_args(args_list, fmt, data_fields)
-        # if method not in self.kv_dict:
-        #     self.add_method(method, kvs)
-        # result, lack_keys = self.parse_and_validate(method, args)
-        # if kvs2 is not None:
-        #     method2 = method + "2"
-        #     if method2 not in self.kv_dict:
-        #         self.add_method(method2, kvs2)
-        #     result2, lack_keys2 = self.parse_and_validate(method2, args)
-        #     if len(lack_keys2) < len(lack_keys):
-        #         result = result2
-        #         lack_keys = lack_keys2
-        # return result, lack_keys
-        kv_list = []
-        if kvs2 is not None:
-            kv_list.append(kvs2)
+    def valid_parse(self, method, args_list, fmt, data_fields, kvs, kvs2=None, kvs3=None):
+        kv_list = [x for x in [kvs2, kvs3] if x is not None]
         return self.valid_parse_kv_list(method, args_list, fmt, data_fields, kvs, kv_list)
 
     def valid_parse_kv_list(self, method, args_list, fmt, data_fields, kvs, kv_list):
@@ -593,6 +854,13 @@ class KeyValueWrapper():
                 self.add_method(method2, kvs2)
             result2, lack_keys2 = self.parse_and_validate(method2, args)
             if len(lack_keys2) < len(lack_keys):
+                result = result2
+                lack_keys = lack_keys2
+            elif (
+                len(lack_keys2) == len(lack_keys)
+                and len(result2.get("dict", {})) > len(result.get("dict", {}))
+            ):
+                # 同缺字段数时优先字段更全的 overload（如 Pair+ScaleFactor 优于仅 ScaleFactor）
                 result = result2
                 lack_keys = lack_keys2
         return result, lack_keys
@@ -645,6 +913,8 @@ class KeyValueWrapper():
             val = None
             if key in temp_dict:
                 val = temp_dict[key]
+                if val is None and key in val_dict:
+                    val = val_dict[key]
             elif key in val_dict:
                 val = val_dict[key]
             if val is not None:
@@ -681,9 +951,12 @@ class KeyValueWrapper():
         lower_keys = sub_dict["lower_keys"]
         result_dict = result["dict"]
         keys = sub_dict["keys"]
+        val_dict = sub_dict.get("val_dict", {})
         for key in keys:
             view = lower_keys[key]
             if view not in result_dict:
+                if key in val_dict:
+                    continue
                 lack_keys.append(view)
         return lack_keys
 
@@ -769,17 +1042,77 @@ class KeyValueWrapperEx(KeyValueWrapper):
     def parse_args_dict(self, args_dict, kv_list):
         lack_keys = None
         result = None
+        best_score = -1
+        best_match_count = -1
+        best_sig_len = None
         lower_args = {}
         for key in args_dict:
             lower_args[str(key).lower()] = args_dict[key]
+
+        def _user_provided_match_count(signature):
+            count = 0
+            for item in signature:
+                key = str(item[0]).lower()
+                if key in lower_args and lower_args[key] not in (None, ""):
+                    count += 1
+            return count
+
+        def _signature_discriminator_score(signature):
+            """同缺字段数时优先含 RiskFreeRateCurve / ForwardCurve 等已填键的重载，避免误选 FXVolSurface 重载。"""
+            score = 0
+            for item in signature:
+                key = str(item[0]).lower()
+                if key in lower_args and lower_args[key] not in (None, ""):
+                    if key in (
+                        "riskfreeratecurve", "forwardcurve", "domesticcurve",
+                        "foreigncurve", "fxforwardcurve", "premiumadjusted",
+                        "calculatedtarget", "spot",
+                        "rateconvention", "calendar", "tenor",
+                    ):
+                        score += 1
+            return score
+
         for kv in kv_list:
             result1, lack_keys1 = self._parse_kv(lower_args, kv)
-            if lack_keys is None or len(lack_keys1) < len(lack_keys):
+            score1 = _signature_discriminator_score(kv)
+            match_count1 = _user_provided_match_count(kv)
+            if lack_keys is None:
+                is_better = True
+            elif len(lack_keys1) < len(lack_keys):
+                is_better = True
+            elif len(lack_keys1) > len(lack_keys):
+                is_better = False
+            elif score1 > best_score:
+                is_better = True
+            elif score1 < best_score:
+                is_better = False
+            elif match_count1 > best_match_count:
+                is_better = True
+            elif match_count1 < best_match_count:
+                is_better = False
+            elif best_sig_len is None or len(kv) < best_sig_len:
+                # 同分同匹配数时优先更短（更专用）的签名，避免误选带大量默认值的完整构造
+                is_better = True
+            else:
+                is_better = False
+            if is_better:
                 result, lack_keys = (result1, lack_keys1)
-                # print(f"parse_args_dict lack_keys: {lack_keys1}, {kv}")
-            if len(lack_keys) == 0:
-                break
-        result["args_dict"] = args_dict
+                best_score = score1
+                best_match_count = match_count1
+                best_sig_len = len(kv)
+            # print(f"parse_args_dict lack_keys: {lack_keys1}, {kv}")
+        # parse_all 常只产出全小写键；custom_instance_func 等多用 init_kv 里的 PascalCase 名 get。
+        # 在保留原键的同时补齐 canonical 名 -> 小写键上的值，避免各处重复 _ci/_g。
+        merged = dict(args_dict)
+        for k, v in lower_args.items():
+            merged[k] = v
+        for kvs in kv_list:
+            for kv in kvs:
+                canon = str(kv[0])
+                lk = canon.lower()
+                if lk in lower_args:
+                    merged[canon] = lower_args[lk]
+        result["args_dict"] = merged
         return result, lack_keys
 
     def _parse_kv(self, args_dict, kvs):
@@ -806,7 +1139,8 @@ class KeyValueWrapperEx(KeyValueWrapper):
                 val = kv[2]
             if val is not None:
                 keys.append(kv[0])
-            else:
+            elif len(kv) < 3:
+                # 仅当无默认值时才计入 lack_keys，有默认值的可选参数不报缺
                 lack_keys.append(kv[0])
             dt[key] = val
             # origin_dt[kv[0]] = val

@@ -2,23 +2,45 @@ import json
 import logging
 import re
 import traceback
+import warnings
 from datetime import datetime
 
-import pandas as pd
-import seaborn
+from mcp.optional_deps import numpy as np
+from mcp.optional_deps import pandas as pd
+# import seaborn  # 注释掉未使用的导入，避免 NumPy 2.0 兼容性问题
 
 from mcp.utils.enums import *
-from mcp.utils.excel_utils import pf_date, to_excel_ordinal, pf_array, pf_array_json,pf_array_date_json
+from mcp.utils.excel_utils import (
+    pf_date,
+    to_excel_ordinal,
+    pf_array,
+    pf_array_json,
+    pf_array_date_json,
+    normalize_sdp_schedule_dates_json,
+)
 from mcp.mcp import MDayCounter, MxScript, MXScriptStructure
 from mcp.tool.args_def import McpArgsException
 from mcp.tools import *
 from mcp.wrapper import to_mcp_args
+import mcp.wrapper as mcp_wrapper
 from mcp.xscript.asset import McpAsset, McpAssetFactory
 from mcp.xscript.utils import SttUtils, xss_utils
 from mcp.utils.mcp_utils import *
 
 from scipy.optimize import root_scalar, minimize_scalar
 import sys
+
+
+def _localvol_err(x):
+    """LocalVol 创建失败时抛出明确错误（如 McpLocalVol 返回了错误字符串）"""
+    raise ValueError(
+        f'LocalVol must be a valid LocalVol object (has getHandler), got {type(x).__name__}: {str(x)[:80]}'
+    )
+
+
+def _sdp_explicit_schedule_dates_json(raw):
+    """见 normalize_sdp_schedule_dates_json（与 McpStructuredDerivativeProduct 路径约定一致）。"""
+    return normalize_sdp_schedule_dates_json(raw)
 
 
 class SttArgsTemplate:
@@ -230,7 +252,7 @@ class SttSchedule:
     #           'EndToEnd', 'LongStub', 'EndStub']
 
     def __init__(self, d):
-        self.name = SttUtils.get_value('ScheduleName', d)
+        self.name = SttUtils.get_value('ScheduleName', d) or SttUtils.get_value('name', d)
 
         self.args_def = [
             ('StartDate', 'StartDate', True, None),
@@ -248,6 +270,19 @@ class SttSchedule:
         self.fields = fields
 
     def parse_args(self, d, result, key_map, lack_keys):
+        name_lower = self.name.lower() if self.name else ''
+        if self.name:
+            key_map[name_lower] = self.name
+            dates_json = _sdp_explicit_schedule_dates_json(d.get(f'{name_lower}/dates'))
+            if dates_json:
+                try:
+                    result[name_lower] = mcp_wrapper.McpSchedule(dates_json)
+                    return
+                except Exception as e:
+                    raise ValueError(
+                        f'Explicit schedule override {self.name}/dates invalid: {e}'
+                    ) from e
+
         args = {}
         temp_lack = []
         for item in self.fields:
@@ -285,8 +320,6 @@ class SttSchedule:
             else:
                 args[item.mcp_field] = item.get_value(d, self.name)
         # print(f"McpSchedule args: {args}")
-        name_lower = self.name.lower()
-        key_map[name_lower] = self.name
         if len(temp_lack) == 0:
             # day_counter = MDayCounter(DayCounter.Act365Fixed)
             day_counter = result['basis']
@@ -590,7 +623,7 @@ class McpXScriptStructure(MXScriptStructure):
             ]
             self.key_parse_func = {
                 'NumSimulation': lambda x: int(float(x)),
-                'LocalVol': lambda x: x.getHandler(),
+                'LocalVol': lambda x: x.getHandler() if hasattr(x, 'getHandler') else (_localvol_err(x)),
                 'LogLevel': lambda x: enum_wrapper.parse2(x, 'LogLevel'),
                 'BuySell': lambda x: enum_wrapper.parse2(x, 'BuySell'),
             }
@@ -616,7 +649,7 @@ class McpXScriptStructure(MXScriptStructure):
             self.key_parse_func = {
                 'ModelType':lambda x: enum_wrapper.parse2(x, 'ModelType'),
                 'NumSimulation': lambda x: int(float(x)),
-                'LocalVol': lambda x: x.getHandler(),
+                'LocalVol': lambda x: x.getHandler() if hasattr(x, 'getHandler') else (_localvol_err(x)),
                 'LogLevel': lambda x: enum_wrapper.parse2(x, 'LogLevel'),
                 'BuySell': lambda x: enum_wrapper.parse2(x, 'BuySell'),
             }
@@ -800,28 +833,28 @@ class McpXScriptStructure(MXScriptStructure):
         return super().PV(isAmount)
     
     def Delta(self, isCcy2=True, isAmount=True, pricingMethod=1):
-        return super().Delta(isCcy2, isAmount)
+        return super().Delta(isAmount)
 
     def Rho(self, isCcy2=True, isAmount=True, pricingMethod=1):
-        return super().Rho(isCcy2, isAmount)
+        return super().Rho(isAmount)
 
     def Gamma(self, isCcy2=True, isAmount=True, pricingMethod=1):
-        return super().Gamma(isCcy2, isAmount)
+        return super().Gamma(isAmount)
 
     def Vega(self, isCcy2=True, isAmount=True, pricingMethod=1):
-        return super().Vega(isCcy2, isAmount)
+        return super().Vega(isAmount)
 
     def Theta(self, isCcy2=True, isAmount=True, pricingMethod=1):
-        return super().Theta(isCcy2, isAmount)
+        return super().Theta(isAmount)
 
     def Volga(self, isCcy2=True, isAmount=True, pricingMethod=1):
-        return super().Volga(isCcy2, isAmount)
+        return super().Volga(isAmount)
 
     def Vanna(self, isCcy2=True, isAmount=True, pricingMethod=1):
-        return super().Vanna(isCcy2, isAmount)
+        return super().Vanna(isAmount)
 
     def ForwardDelta(self, isCcy2=True, isAmount=True, pricingMethod=1):
-        return super().ForwardDelta(isCcy2, isAmount)
+        return super().ForwardDelta(isAmount)
 
     def Events(self):
         return super().Events()
@@ -1317,9 +1350,6 @@ class Solver:
 
 
 
-from scipy import interpolate
-import warnings
-import numpy as np
 class InterpolationHelper:
     def __init__(self, x_values, y_values):
         """

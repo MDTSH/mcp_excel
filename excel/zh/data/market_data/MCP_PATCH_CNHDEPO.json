@@ -1,0 +1,16 @@
+{
+  "valuation_date": "20260810",
+  "YieldCurve2": [
+    {
+      "curve_id": "CNHDEPO_2",
+      "referenceDate": "20260810",
+      "ReferenceDate": "20260810",
+      "Tenors": ["ON", "TN", "SW", "2W", "1M", "2M", "3M", "6M", "9M", "1Y", "2Y"],
+      "BidZeroRates": [0.0118, 0.0100, 0.0105, 0.0110, 0.0110, 0.0110, 0.0115, 0.0130, 0.0140, 0.0150, 0.0150],
+      "AskZeroRates": [0.0143, 0.0150, 0.0155, 0.0160, 0.0160, 0.0160, 0.0165, 0.0180, 0.0190, 0.0200, 0.0200],
+      "InterpolationMethod": "LINEARINTERPOLATION",
+      "DayCounter": "Act365Fixed",
+      "calendar": "CNY"
+    }
+  ]
+}

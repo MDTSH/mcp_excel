@@ -1,4 +1,4 @@
-from pandas import DataFrame
+from mcp.optional_deps import is_dataframe
 
 from mcp.utils.enums import *
 from mcp.utils.excel_utils import mcp_kv_wrapper, pf_nd_arrary_or_list
@@ -22,6 +22,7 @@ class McpArgsType:
             "curve": "object",
             "list": "list",
             "plainlist": "str",
+            "optiontypelist": "str",
             "datelist": "list",
             "object": "object",
             "mcphandler": "object",
@@ -69,7 +70,7 @@ class McpArgsDef:
             for key in args:
                 result.append([key, args[key]])
             return result
-        elif isinstance(args, DataFrame):
+        elif is_dataframe(args):
             result = []
             cols = args.columns.tolist()
             for col in cols:
@@ -113,6 +114,7 @@ class McpArgsDefImpl(McpArgsDef):
         self.McpVanillaOption()
         self.McpAsianOption()
         self.McpFixedRateBond()
+        self.McpAmortizingBond()
         self.McpVanillaSwap()
         self.McpSchedule()
 
@@ -294,6 +296,22 @@ class McpArgsDefImpl(McpArgsDef):
              ("ApplyDayCount", "bool", False),
              ("DateAdjuster", "const", DateAdjusterRule.Actual, "Actual"),
              ]
+        ])
+
+    def McpAmortizingBond(self):
+        self.add_def("McpAmortizingBond", [
+            [
+                ("SettlementDate", "date"),
+                ("MaturityDate", "date"),
+                ("IssueDate", "date"),
+                ("Frequency", "const", Frequency.Annual, "Annual"),
+                ("Coupon", "float"),
+                ("DayCounter", "const", DayCounter.Act365Fixed, "Act365Fixed"),
+                ("FaceValue", "float", 100, 100),
+                ("PrincipalSchedule", "str"),
+                ("CouponSchedule", "str", "", ""),
+                ("PrincipalBasis", "int", 0, 0),
+            ]
         ])
 
     def McpVanillaSwap(self):

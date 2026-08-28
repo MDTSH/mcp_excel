@@ -1,226 +1,146 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-MCP Installation Test Script
-Quick test to verify installation components
-
-Author: Mathema Team
-"""
+"""Verify MCP Excel files and that this Python can import mcp."""
 
 import os
-import sys
 import platform
+import sys
 from pathlib import Path
 
+SUPPORTED = (9, 10, 11, 12, 13)
+ROOT = Path(__file__).resolve().parent
+LIB = ROOT / "lib" / "X64"
+
+
 def test_python_version():
-    """Test Python version compatibility"""
     print("Testing Python version...")
-    version_info = sys.version_info
-    print(f"  Python version: {version_info.major}.{version_info.minor}.{version_info.micro}")
-    
-    if version_info.major == 3 and version_info.minor == 9:
-        print("  ✓ Python 3.9.x is compatible")
+    v = sys.version_info
+    print("  Python version: %s.%s.%s" % (v.major, v.minor, v.micro))
+    if v.major == 3 and v.minor in SUPPORTED and platform.architecture()[0] == "64bit":
+        print("  OK 64-bit CPython 3.9–3.13")
         return True
-    else:
-        print("  ✗ Python 3.9.x is required")
-        return False
+    print("  FAIL need 64-bit CPython 3.9–3.13")
+    return False
+
 
 def test_system_architecture():
-    """Test system architecture"""
     print("\nTesting system architecture...")
     arch = platform.machine().lower()
-    print(f"  Architecture: {arch}")
-    
-    if arch in ['amd64', 'x86_64']:
-        print("  ✓ 64-bit system detected")
-        return "X64"
-    else:
-        print("  ✓ 32-bit system detected")
-        return "Win32"
+    print("  Architecture: %s" % arch)
+    if arch in ("amd64", "x86_64"):
+        print("  OK 64-bit")
+        return True
+    print("  FAIL MCP Excel is 64-bit only")
+    return False
+
 
 def test_mcp_files():
-    """Test MCP file structure"""
     print("\nTesting MCP file structure...")
-    mcp_root = Path(__file__).parent
-    
-    required_files = [
-        "requirements.txt",
-        "quick_install.bat",
-        "install_helper.py"
-    ]
-    
-    all_found = True
-    for file_path in required_files:
-        full_path = mcp_root / file_path
-        if full_path.exists():
-            print(f"  ✓ {file_path}")
+    ok = True
+    for name in ("requirements.txt", "quick_install.bat", "install.bat", "install_mcp_excel.py"):
+        path = ROOT / name
+        if path.exists():
+            print("  OK %s" % name)
         else:
-            print(f"  ✗ {file_path} - MISSING")
-            all_found = False
-    
-    return all_found
+            print("  FAIL %s - MISSING" % name)
+            ok = False
+    return ok
+
 
 def test_lib_directories():
-    """Test library directories"""
     print("\nTesting library directories...")
-    mcp_root = Path(__file__).parent
-    lib_dir = mcp_root / "lib"
-    
-    if not lib_dir.exists():
-        print("  ✗ lib/ directory not found")
+    if not LIB.is_dir():
+        print("  FAIL lib/X64/ not found")
         return False
-    
-    arch_dirs = ["X64", "Win32"]
-    for arch_dir in arch_dirs:
-        arch_path = lib_dir / arch_dir
-        if arch_path.exists():
-            print(f"  ✓ lib/{arch_dir}/ directory found")
-            
-            # Check for required files
-            required_files = ["_mcp.pyd", "pyxll.xll", "pyxll.cfg"]
-            for file_name in required_files:
-                file_path = arch_path / file_name
-                if file_path.exists():
-                    print(f"    ✓ {file_name}")
-                else:
-                    print(f"    ✗ {file_name} - MISSING")
+    print("  OK lib/X64/")
+    ok = True
+    for name in ("pyxll.xll", "pyxll.cfg", "cudart64_12.dll", "curand64_10.dll"):
+        if (LIB / name).exists():
+            print("    OK %s" % name)
         else:
-            print(f"  ✗ lib/{arch_dir}/ directory not found")
-    
-    return True
+            print("    FAIL %s - MISSING" % name)
+            ok = False
+    pyds = sorted(LIB.glob("_mcp.cp*-win_amd64.pyd"))
+    if pyds:
+        print("    OK %d tagged _mcp pyd(s): %s" % (len(pyds), ", ".join(p.name for p in pyds)))
+    else:
+        print("    FAIL _mcp.cp*-win_amd64.pyd - MISSING")
+        ok = False
+    tag = "cp%d%d" % (sys.version_info.major, sys.version_info.minor)
+    tagged = LIB / ("_mcp.%s-win_amd64.pyd" % tag)
+    if tagged.exists():
+        print("    OK matching this Python: %s" % tagged.name)
+    else:
+        print("    FAIL no %s for this Python" % tagged.name)
+        ok = False
+    return ok
 
-def test_pythonpath():
-    """Test PYTHONPATH configuration"""
-    print("\nTesting PYTHONPATH...")
-    mcp_root = str(Path(__file__).parent)
-    
-    # Determine architecture
-    arch = platform.machine().lower()
-    if arch in ['amd64', 'x86_64']:
-        lib_dir = "X64"
-    else:
-        lib_dir = "Win32"
-    
-    lib_path = str(Path(__file__).parent / "lib" / lib_dir)
-    
-    pythonpath = os.environ.get('PYTHONPATH', '')
-    # Split PYTHONPATH by separator and normalize paths for comparison
-    pythonpath_list = [os.path.normpath(p.strip()).lower() for p in pythonpath.split(os.pathsep) if p.strip()]
-    mcp_root_norm = os.path.normpath(mcp_root).lower()
-    lib_path_norm = os.path.normpath(lib_path).lower()
-    
-    mcp_in_path = mcp_root_norm in pythonpath_list
-    lib_in_path = lib_path_norm in pythonpath_list
-    
-    if mcp_in_path:
-        print("  ✓ MCP root in PYTHONPATH")
-    else:
-        print("  ✗ MCP root not in PYTHONPATH")
-        print(f"    Should include: {mcp_root}")
-    
-    if lib_in_path:
-        print(f"  ✓ MCP lib/{lib_dir} in PYTHONPATH")
-    else:
-        print(f"  ✗ MCP lib/{lib_dir} not in PYTHONPATH")
-        print(f"    Should include: {lib_path}")
-    
-    print(f"    Current PYTHONPATH: {pythonpath}")
-    
-    return mcp_in_path and lib_in_path
-
-def test_pyxll_module():
-    """Test PyXLL module availability"""
-    print("\nTesting PyXLL module...")
-    
-    # Add MCP root to sys.path if needed
-    mcp_root = str(Path(__file__).parent)
-    if mcp_root not in sys.path:
-        sys.path.insert(0, mcp_root)
-    
-    try:
-        import pyxll
-        print("  ✓ PyXLL module imported successfully")
-        return True
-    except ImportError as e:
-        print(f"  ✗ PyXLL module import failed: {e}")
-        print(f"    Make sure MCP root is in PYTHONPATH")
-        return False
 
 def test_mcp_import():
-    """Test MCP library import"""
     print("\nTesting MCP library import...")
-    
-    # Add MCP paths to sys.path
-    mcp_root = Path(__file__).parent
-    
-    # Determine architecture
-    arch = platform.machine().lower()
-    if arch in ['amd64', 'x86_64']:
-        lib_dir = "X64"
-    else:
-        lib_dir = "Win32"
-    
-    mcp_paths = [
-        str(mcp_root),
-        str(mcp_root / "lib" / lib_dir)
-    ]
-    
-    for path in mcp_paths:
-        if path not in sys.path:
-            sys.path.insert(0, path)
-    
+    root = str(ROOT)
+    if root not in sys.path:
+        sys.path.insert(0, root)
     try:
         import mcp
-        print("  ✓ MCP library imported successfully")
+        pyd = getattr(getattr(mcp, "_mcp", None), "__file__", None)
+        print("  OK import mcp")
+        if pyd:
+            print("    %s" % pyd)
         return True
-    except ImportError as e:
-        print(f"  ✗ MCP library import failed: {e}")
+    except Exception as exc:
+        print("  FAIL import mcp: %s" % exc)
         return False
 
+
+def test_pyxll_module():
+    print("\nTesting PyXLL module...")
+    root = str(ROOT)
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    try:
+        import pyxll  # noqa: F401
+        print("  OK import pyxll")
+        return True
+    except ImportError as exc:
+        print("  FAIL import pyxll: %s" % exc)
+        return False
+
+
 def main():
-    """Main test function"""
     print("MCP Installation Test")
     print("=" * 50)
-    
     tests = [
         ("Python Version", test_python_version),
-        ("System Architecture", lambda: test_system_architecture()),
+        ("System Architecture", test_system_architecture),
         ("MCP Files", test_mcp_files),
         ("Library Directories", test_lib_directories),
-        ("PYTHONPATH", test_pythonpath),
         ("PyXLL Module", test_pyxll_module),
-        ("MCP Import", test_mcp_import)
+        ("MCP Import", test_mcp_import),
     ]
-    
     results = []
-    for test_name, test_func in tests:
+    for name, fn in tests:
         try:
-            result = test_func()
-            results.append((test_name, result))
-        except Exception as e:
-            print(f"  ✗ {test_name} test failed with error: {e}")
-            results.append((test_name, False))
-    
+            results.append((name, bool(fn())))
+        except Exception as exc:
+            print("  FAIL %s: %s" % (name, exc))
+            results.append((name, False))
+
     print("\n" + "=" * 50)
     print("Test Summary:")
     print("=" * 50)
-    
     passed = 0
-    total = len(results)
-    
-    for test_name, result in results:
-        status = "PASS" if result else "FAIL"
-        print(f"  {test_name}: {status}")
-        if result:
+    for name, ok in results:
+        print("  %s: %s" % (name, "PASS" if ok else "FAIL"))
+        if ok:
             passed += 1
-    
-    print(f"\nOverall: {passed}/{total} tests passed")
-    
-    if passed == total:
-        print("✓ All tests passed! MCP is ready to use.")
-    else:
-        print("✗ Some tests failed. Please check the installation.")
-        print("\nTo fix issues, run: quick_install.bat")
+    print("\nOverall: %d/%d tests passed" % (passed, len(results)))
+    if passed == len(results):
+        print("All tests passed. MCP is ready to use.")
+        return 0
+    print("Some tests failed. Run install.bat (or quick_install.bat).")
+    return 1
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
