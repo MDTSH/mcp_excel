@@ -11,8 +11,8 @@ Windows 10/11, **64-bit Excel**, and **64-bit CPython 3.9–3.13**.
 
 The installer:
 
-- Scans 64-bit CPython 3.9–3.13 that match a shipped `_mcp.cp3xx-win_amd64.pyd`
-- Writes `lib\X64\pyxll.cfg` (`executable` + license). It does **not** set `PYTHONPATH`
+- Scans 64-bit CPython 3.9–3.13 that match a shipped `_mcp.cp3xx-win_amd64.pyd` and `lib\X64\pyxll\py3xx\pyxll.xll` (PyXLL 5.12.4)
+- Copies that xll over `lib\X64\pyxll.xll`, then writes `lib\X64\pyxll.cfg` (`executable` + license). It does **not** set `PYTHONPATH`
 - Optionally installs `numpy` / `pandas` / `requests` / `python-dateutil` (default: skip)
 - Registers `lib\X64\pyxll.xll`
 

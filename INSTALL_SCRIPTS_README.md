@@ -12,9 +12,9 @@
 ## What the installer does
 
 1. Language: Chinese (default) or English (`--lang zh|en`).
-2. Scan 64-bit CPython 3.9–3.13 that have a matching `_mcp.cp3xx-win_amd64.pyd`.
+2. Scan 64-bit CPython 3.9–3.13 that have a matching `_mcp.cp3xx-win_amd64.pyd` and `lib\X64\pyxll\py3xx\pyxll.xll` (PyXLL 5.12.4).
 3. Prefer an interpreter that already has numpy 1.x / pandas / requests / dateutil.
-4. Patch `lib\X64\pyxll.cfg` `executable` (prefer `pythonw.exe`) and license. Backup first.
+4. Copy that xll over `lib\X64\pyxll.xll`, then patch `lib\X64\pyxll.cfg` `executable` (prefer `pythonw.exe`) and license. Backup cfg first.
 5. Does **not** set `PYTHONPATH`.
 6. Register `lib\X64\pyxll.xll` unless `--skip-excel`.
 

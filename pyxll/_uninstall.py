@@ -22,7 +22,7 @@ import logging
 try:
     import winreg
 except ImportError:
-    import winreg as winreg  # type: ignore
+    import _winreg as winreg  # type: ignore
 
 _log = logging.getLogger(__name__)
 

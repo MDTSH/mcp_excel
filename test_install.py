@@ -73,6 +73,13 @@ def test_lib_directories():
     else:
         print("    FAIL no %s for this Python" % tagged.name)
         ok = False
+    xll_tag = "py%d%d" % (sys.version_info.major, sys.version_info.minor)
+    xll_stock = LIB / "pyxll" / xll_tag / "pyxll.xll"
+    if xll_stock.is_file():
+        print("    OK matching PyXLL xll: %s" % xll_stock.relative_to(LIB))
+    else:
+        print("    FAIL no lib/X64/pyxll/%s/pyxll.xll" % xll_tag)
+        ok = False
     return ok
 
 

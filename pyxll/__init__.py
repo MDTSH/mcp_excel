@@ -24,6 +24,8 @@ import warnings
 import logging
 import sys
 
+import typing
+
 _log = logging.getLogger(__name__)
 
 try:
@@ -32,7 +34,7 @@ try:
 except ImportError:
     minidom = None  # type: ignore
 
-__version__ = "5.10.3"
+__version__ = "5.12.4"
 
 nan = 1e10000 * 0
 
@@ -45,53 +47,6 @@ xlDialogTypeFunctionWizard = 1
 xlDialogTypeSearchAndReplace = 2
 
 _no_value = object()
-
-# Import typing for use by some type hints
-if sys.version_info[:2] > (3, 5):
-    try:
-        import typing
-        if typing.TYPE_CHECKING:
-            from typing import Any, Tuple, Type, Union, Callable
-            from typing import TypeAlias  # type: ignore
-
-            try:
-                import exceltypes  # type: ignore
-            except ImportError:
-                pass
-            try:
-                import win32com.client  # type: ignore
-            except ImportError:
-                pass
-            try:
-                import pythoncom  # type: ignore
-            except ImportError:
-                pass
-            try:
-                import comtypes  # type: ignore
-            except ImportError:
-                pass
-            try:
-                import types
-            except ImportError:
-                pass
-            try:
-                import configparser
-            except ImportError:
-                pass
-            try:
-                import concurrent
-            except ImportError:
-                pass
-
-            _ExcInfo = "Tuple[Type[BaseException], BaseException, types.TracebackType]"  # type: TypeAlias
-            _OptExcInfo = "Union[_ExcInfo, Tuple[None, None, None]]"  # type: TypeAlias
-            _COMObject = "Union[win32com.client.Dispatch, pythoncom.PyIUnknown, comtypes.POINTER, Any]"  # type: TypeAlias
-            _ExcelApplication = "Union[exceltypes.Application, _COMObject]"  # type: TypeAlias
-            _ExcelRange = "Union[exceltypes.Range, _COMObject]"  # type: TypeAlias
-            _Function = "Callable[..., typing.Any]"  # type: TypeAlias
-            _Decorator = "Union[Callable[[_Function], _Function], _Function]"  # type: TypeAlias
-    except ImportError:
-        pass
 
 def reload():
     """
@@ -503,7 +458,9 @@ if sys.version_info[:3] >= (3, 5, 1):
         """
         return asyncio.get_event_loop()
 
-class RTD(object):
+_RTD_T = typing.TypeVar("_RTD_T")
+
+class RTD(typing.Generic[_RTD_T]):
     def __init__(self, value=None):
         self.__value = value
         self.__error = None
@@ -544,6 +501,16 @@ class RTD(object):
     @property
     def disconnected(self):
         return False
+
+    def detach(self):
+        """Detaches the RTD instance from any Excel RTD functions.
+
+        After detaching, any subsequent calls to the Excel RTD function that created
+        this object will result in the Python function be re-run.
+
+        See `Restarting RTD Functions` in the user guide for more details.
+        """
+        pass
 
     def set_error(self,
                   exc_type,  # type: typing.Type[BaseException]
@@ -718,6 +685,73 @@ class IRibbonControl:
     def Context(self):  # type: (...) -> typing.Any
         raise Exception("Not supported when running outside of Excel")
 
+class CacheKey:
+
+    def __init__(self):
+        raise NotImplementedError()
+
+    def __hash__(self):
+        raise NotImplementedError()
+
+    def __lt__(self, other):
+        raise NotImplementedError()
+
+    def __le__(self, other):
+        raise NotImplementedError()
+
+    def __gt__(self, other):
+        raise NotImplementedError()
+
+    def __ge__(self, other):
+        raise NotImplementedError()
+
+    def __eq__(self, other):
+        raise NotImplementedError()
+
+    def __ne__(self, other):
+        raise NotImplementedError()
+
+class CachedValue:
+
+    def __init__(self):
+        raise NotImplementedError()
+
+    @property
+    def value(self):
+        raise NotImplementedError()
+
+    @property
+    def exc_info(self):
+        raise NotImplementedError()
+
+def lru_cache_info(function=None):
+    """
+    Returns a dictionary of information about the state of the LRU
+    cache for a function.
+
+    If called without a function a dictionary of states is returned
+    keyed by the Excel function name.
+
+    The information dictionary (or dictionaries) contain the following keys:
+
+    - maxsize
+    - currsize
+    - hits
+    - misses
+
+    :param function: Function to get information for, or None for all cached functions.
+    :return: dict of cache information.
+    """
+    return {}
+
+def lru_cache_clear(function=None):
+    """
+    Clear one or all LRU caches.
+
+    :param function: Function to clear LRU cache for, or None for all cached functions.
+    """
+    return None
+
 _pd_pandas = None
 _pd_numpy = None
 def _pandas_get_imports():
@@ -745,6 +779,35 @@ class CalcError(RuntimeError):
     calculation has ended."""
     pass
 
+class ThreadKilledError(Exception):
+    """Exception used when a background thread needs to be stopped."""
+    pass
+
+class PropagatedError(Exception):
+    """Raised when an error is propagated from one Excel function to another."""
+    pass
+
+class TypeParameters:
+    """Used in conjunction with typing.Annotated to add
+    type parameters to type information used by PyXLL.
+
+    For example::
+
+        @xl_func
+        def sample(df: Annotated[pd.DataFrame, TypeParameters(index=True)]):
+            ...
+
+    Is equivalent to:
+
+        @xl_func("dataframe<index=True> df")
+        def sample(df):
+            ...
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
 class TableBase:
     """
     Base class for writing Tables to Excel.
@@ -762,15 +825,23 @@ class TableBase:
     the following happens:
 
     1. Table.find_table(rng) is called to see if there is an existing ListObject object.
-    2. If no existing ListObject is found, Table.create_table(rng) is called.
-    3. If the ListObject size is different from that returned by Table.rows() and
+    2. Table.clear_formatting(list_object) is called.
+    3. If no existing ListObject is found, Table.create_table(rng) is called.
+    4. If the ListObject size is different from that returned by Table.rows() and
        Table.columns(), Table.resize_table(list_object) is called.
-    4. Table.update_table(list_object) is called to update the data in the
+    5. Table.update_table(list_object) is called to update the data in the
        ListObject table object.
-    5. Finally, Table.apply_filters and Table.apply_sorting are called to (re)apply
+    6. Table.apply_formatting(list_object) is called.
+    7. Finally, Table.apply_filters and Table.apply_sorting are called to (re)apply
        any filtering and sorting to the table.
 
     """
+
+    def __init__(self, data=None, type=None, formatter=None, **kwargs):
+        self.__data = data
+        self.__type = type
+        self.__formatter = formatter
+        self.__kwargs = kwargs
 
     def com_package(self):
         """Return the ``com_package`` to use when passing COM objects to methods of this class.
@@ -806,6 +877,10 @@ class TableBase:
         """Return the number of columns in the table."""
         raise NotImplementedError()
 
+    def clear_formatting(self, xl_list_object):
+        """Clear any formatting before updating the table."""
+        raise NotImplementedError()
+
     def resize_table(self, xl_list_object, rows, columns):
         """Resizes the ListObject to match the new data.
 
@@ -824,6 +899,10 @@ class TableBase:
         """
         raise NotImplementedError()
 
+    def apply_formatting(self, xl_list_object):
+        """Apply any formatting after updating the table."""
+        raise NotImplementedError()
+
     def apply_filters(self, xl_list_object):
         """Apply any filters to the table object.
 
@@ -838,6 +917,13 @@ class TableBase:
         """
         raise NotImplementedError()
 
+    def clear_contents(self, xl_list_object):
+        """Clears the contents from the Excel table.
+
+        :param xl_list_object: Existing table as a ListObject COM object.
+        """
+        raise NotImplementedError()
+
     def on_error(self, exc_value, xl_range):
         """
         Called if an error occurs when creating or updating a table.
@@ -847,20 +933,71 @@ class TableBase:
         """
         raise NotImplementedError()
 
+    def reorder_data(self, headers):
+        """
+        Re-order headers and data to match the existing target tables' headers.
+        :param headers: List of existing table's headers
+        """
+        pass
+
+    @property
+    def skipped_columns(self):
+        """List of column indexes (integers) that shouldn't be written to Excel, or None.
+
+        Can be used in conjunction with reorder_data to prevent column data
+        from being written for certain columns.
+        """
+        return None
+
+    @property
+    def data(self):
+        """Data object that was passed to the constructor.
+        """
+        return self.__data
+
+    @data.setter
+    def data(self, data):
+        self.__data = data
+
+    @property
+    def type(self):
+        """Data type that was passed to the constructor, including
+        type parameters passed as kwargs.
+
+        The return type should be considered opaque but can be used with
+        pyxll.get_type_converter.
+        """
+        if self.__kwargs:
+            raise NotImplementedError()
+        return self.__type
+
+    @property
+    def formatter(self):
+        """Formatter used to do any cell formatting when writing the table.
+        """
+        return self.__formatter
+
+    @formatter.setter
+    def formatter(self, formatter):
+        self.__formatter = formatter
+
 class Table(TableBase):
 
-    def __init__(self, data, name=None, type=None, **kwargs):
+    def __init__(self, data, name=None, type=None, preserve_columns=False, formatter=None, **kwargs):
         """
         :param data: DataFrame or other type that can be converted to ``var[][]``.
         :param name: Table name (optional)
         :param type: Type signature for `data`. If None, data must be a pandas or polars DataFrame or a list of lists.
+        :param preserve_columns: If true, existing table columns are preserved and no columns are added or removed.
+        :param formatter: Formatter to use for formatting the table.
         :param kwargs: Additional type parameters.
         """
-        TableBase.__init__(self)
+        TableBase.__init__(self, data, type=type, formatter=formatter, **kwargs)
         self.__name = name
-        self.__data = data
         self.__type = type
         self.__kwargs = kwargs
+        self.__preserve_columns = preserve_columns
+        self.__skipped_columns = None
 
     @property
     def name(self):
@@ -875,22 +1012,24 @@ class Table(TableBase):
         self.__name = name
 
     @property
-    def data(self):
-        """Data object that was passed to the constructor.
+    def preserve_columns(self):
+        """If true, the data will be reordered to match any existing table columns.
         """
-        return self.__data
+        return self.__preserve_columns
 
     @property
-    def type(self):
-        """Data type that was passed to the constructor, including
-        type parameters passed as kwargs.
+    def skipped_columns(self):
+        """List of column indexes to be skipped after calling reorder_data."""
+        return self.__skipped_columns
 
-        The return type should be considered opaque but can be used with
-        pyxll.get_type_converter.
+    def reorder_data(self, headers):
         """
-        if self.__kwargs:
-            raise NotImplementedError()
-        return self.__type
+        Re-order headers and data to match the existing target tables' headers.
+        Only used when 'preserve_columns' is True.
+
+        :param headers: List of existing table's headers
+        """
+        raise NotImplementedError()
 
     def write(self, target):
         """
@@ -902,9 +1041,69 @@ class Table(TableBase):
         # Implemented in PyXLL add-in
         raise NotImplementedError()
 
+def _has_method_override(inst, method_name, base_cls):
+    """Return True if inst.method is different from the base class."""
+    inst_func = getattr(inst, method_name)
+    base_func = getattr(base_cls, method_name)
+    if inst_func == base_func:
+        return False
+
+    try:
+        im_func = getattr(inst_func, "__func__")
+        return im_func != base_func
+    except AttributeError:
+        pass
+
+    return True
+
 #
 # API functions / decorators
 #
+
+try:
+    if typing.TYPE_CHECKING:
+        from typing import Any, Tuple, Type, Union, Callable
+        from typing import TypeAlias  # type: ignore
+
+        try:
+            import exceltypes  # type: ignore
+        except ImportError:
+            pass
+        try:
+            import win32com.client  # type: ignore
+        except ImportError:
+            pass
+        try:
+            import pythoncom  # type: ignore
+        except ImportError:
+            pass
+        try:
+            import comtypes  # type: ignore
+        except ImportError:
+            pass
+        try:
+            import types
+        except ImportError:
+            pass
+        try:
+            import configparser
+        except ImportError:
+            pass
+        try:
+            import concurrent
+        except ImportError:
+            pass
+
+        _ExcInfo = Tuple[Type[BaseException], BaseException, types.TracebackType]
+        _OptExcInfo = Union[_ExcInfo, Tuple[None, None, None]]
+        _COMObject = typing.Any
+        _ExcelApplication = typing.Any
+        _ExcelRange = typing.Any
+        _Function = Callable[..., typing.Any]
+        _Decorator = Union[_Function, Callable[[_Function], _Function]]
+
+except ImportError:
+    pass
 
 def get_config():
     # type: () -> configparser.ConfigParser
@@ -924,6 +1123,74 @@ def xl_version():
     14.0 => Excel 2010
     """
     raise Exception("Not supported when running outside of Excel")
+
+@typing.overload
+def xl_func(
+        signature, # type: _Function
+        category=None,  # type: typing.Union[str, None]
+        help_topic="",  # type: str
+        thread_safe=False,  # type: bool
+        macro=False,  # type: bool
+        allow_abort=None,  # type: typing.Union[bool, None]
+        volatile=None,  # type: typing.Union[bool, None]
+        disable_function_wizard_calc=None,  # type: typing.Union[bool, None]
+        disable_replace_calc=None,  # type: typing.Union[bool, None]
+        arg_descriptions=None,  # type: typing.Union[typing.Dict[str, str], None]
+        name=None,  # type: typing.Union[str, None]
+        name_prefix=None,  # type: typing.Union[str, None]
+        name_suffix=None,  # type: typing.Union[str, None]
+        auto_resize=None,  # type: typing.Union[bool, None]
+        hidden=False,  # type: bool
+        transpose=False,  # type: bool
+        recalc_on_open=None,  # type: typing.Union[bool, None]
+        recalc_on_reload=None,  # type: typing.Union[bool, None]
+        formatter=None,  # type: typing.Union[BaseFormatter, None]
+        async_cache=None,  # type: typing.Union[bool, None]
+        nan_value=_no_value,
+        posinf_value=_no_value,
+        neginf_value=_no_value,
+        none_value=_no_value,
+        cache=None, # typing.Union[None, collections.abc.MutableMapping]
+        lru_cache=None, # type: typing.Union[int, bool, None]
+        decimals_to_float=None,  # type: typing.Union[int, bool, None]
+        propagate_errors=None,  # type: typing.Union[int, bool, typing.Dict[str, bool], None]
+        propagate_errors_filter=None  # type: typing.Union[typing.Callable, typing.Dict[str, typing.Callable], None]
+):  # type: (...) -> _Function
+    ...
+
+@typing.overload
+def xl_func(
+        signature=None,  # type: typing.Union[str, None]
+        category=None,  # type: typing.Union[str, None]
+        help_topic="",  # type: str
+        thread_safe=False,  # type: bool
+        macro=False,  # type: bool
+        allow_abort=None,  # type: typing.Union[bool, None]
+        volatile=None,  # type: typing.Union[bool, None]
+        disable_function_wizard_calc=None,  # type: typing.Union[bool, None]
+        disable_replace_calc=None,  # type: typing.Union[bool, None]
+        arg_descriptions=None,  # type: typing.Union[typing.Dict[str, str], None]
+        name=None,  # type: typing.Union[str, None]
+        name_prefix=None,  # type: typing.Union[str, None]
+        name_suffix=None,  # type: typing.Union[str, None]
+        auto_resize=None,  # type: typing.Union[bool, None]
+        hidden=False,  # type: bool
+        transpose=False,  # type: bool
+        recalc_on_open=None,  # type: typing.Union[bool, None]
+        recalc_on_reload=None,  # type: typing.Union[bool, None]
+        formatter=None,  # type: typing.Union[BaseFormatter, None]
+        async_cache=None,  # type: typing.Union[bool, None]
+        nan_value=_no_value,
+        posinf_value=_no_value,
+        neginf_value=_no_value,
+        none_value=_no_value,
+        cache=None, # typing.Union[None, collections.abc.MutableMapping]
+        lru_cache=None, # type: typing.Union[int, bool, None]
+        decimals_to_float=None,  # type: typing.Union[int, bool, None]
+        propagate_errors=None,  # type: typing.Union[int, bool, typing.Dict[str, bool], None]
+        propagate_errors_filter=None  # type: typing.Union[typing.Callable, typing.Dict[str, typing.Callable], None]
+):  # type: (...) -> typing.Callable[[_Function], _Function]
+    ...
 
 def xl_func(
     signature=None,  # type: typing.Union[str, _Function, None]
@@ -949,7 +1216,13 @@ def xl_func(
     nan_value=_no_value,
     posinf_value=_no_value,
     neginf_value=_no_value,
-    none_value=_no_value):  # type: (...) -> _Decorator
+    none_value=_no_value,
+    cache=None, # typing.Union[None, collections.abc.MutableMapping]
+    lru_cache=None, # type: typing.Union[int, bool, None]
+    decimals_to_float=None,  # type: typing.Union[int, bool, None]
+    propagate_errors=None,  # type: typing.Union[int, bool, typing.Dict[str, bool], None]
+    propagate_errors_filter=None  # type: typing.Union[typing.Callable, typing.Dict[str, typing.Callable], None]
+    ):  # type: (...) -> _Decorator
     """
     Decorator for exposing functions to excel, e.g.:
 
@@ -990,7 +1263,7 @@ def xl_func(
 
 def xl_arg_doc(arg_name,  # type: str
                docstring  # type: str
-               ):  # type: (...) -> _Decorator
+               ):  # type: (...) -> typing.Callable[[_Function], _Function]
     """
     Decorator for documenting a function's named parameters.
     Must be applied before xl_func.
@@ -1022,6 +1295,58 @@ def xl_arg_doc(arg_name,  # type: str
         return func
     return dummy_decorator
 
+@typing.overload
+def xl_macro(signature,  # type: _Function
+             allow_abort=None,  # type: typing.Union[bool, None]
+             arg_descriptions=None,  # type: typing.Union[typing.Dict[str, str], None]
+             name=None,  # type: typing.Union[str, None]
+             name_prefix=None,  # type: typing.Union[str, None]
+             name_suffix=None,  # type: typing.Union[str, None]
+             shortcut=None,  # type: typing.Union[str, None]
+             transpose=False,  # type: typing.Union[bool, None]
+             nan_value=_no_value,
+             posinf_value=_no_value,
+             neginf_value=_no_value,
+             none_value=_no_value,
+             disable_calculation=False,  # type: bool
+             disable_screen_updating=False,  # type: bool
+             disable_alerts=False,  # type: bool
+             restore_selection=False,  # type: bool
+             restore_active_sheet=False,  # type: bool
+             cache=None, # typing.Union[None, collections.abc.MutableMapping]
+             lru_cache=None, # type: typing.Union[int, bool, None]
+             decimals_to_float=None, # type: typing.Union[int, bool, None]
+             propagate_errors=None,  # type: typing.Union[int, bool, typing.Dict[str, bool], None]
+             propagate_errors_filter=None  # type: typing.Union[typing.Callable, typing.Dict[str, typing.Callable], None]
+             ):  # type: (...) -> _Function
+    ...
+
+@typing.overload
+def xl_macro(signature,  # type: typing.Union[str, None]
+             allow_abort=None,  # type: typing.Union[bool, None]
+             arg_descriptions=None,  # type: typing.Union[typing.Dict[str, str], None]
+             name=None,  # type: typing.Union[str, None]
+             name_prefix=None,  # type: typing.Union[str, None]
+             name_suffix=None,  # type: typing.Union[str, None]
+             shortcut=None,  # type: typing.Union[str, None]
+             transpose=False,  # type: typing.Union[bool, None]
+             nan_value=_no_value,
+             posinf_value=_no_value,
+             neginf_value=_no_value,
+             none_value=_no_value,
+             disable_calculation=False,  # type: bool
+             disable_screen_updating=False,  # type: bool
+             disable_alerts=False,  # type: bool
+             restore_selection=False,  # type: bool
+             restore_active_sheet=False,  # type: bool
+             cache=None, # typing.Union[None, collections.abc.MutableMapping]
+             lru_cache=None, # type: typing.Union[int, bool, None]
+             decimals_to_float=None, # type: typing.Union[int, bool, None]
+             propagate_errors=None,  # type: typing.Union[int, bool, typing.Dict[str, bool], None]
+             propagate_errors_filter=None  # type: typing.Union[typing.Callable, typing.Dict[str, typing.Callable], None]
+             ):  # type: (...) -> typing.Callable[[_Function], _Function]
+    ...
+
 def xl_macro(signature=None,  # type: typing.Union[str, _Function, None]
              allow_abort=None,  # type: typing.Union[bool, None]
              arg_descriptions=None,  # type: typing.Union[typing.Dict[str, str], None]
@@ -1038,7 +1363,12 @@ def xl_macro(signature=None,  # type: typing.Union[str, _Function, None]
              disable_screen_updating=False,  # type: bool
              disable_alerts=False,  # type: bool
              restore_selection=False,  # type: bool
-             restore_active_sheet=False  # type: bool
+             restore_active_sheet=False,  # type: bool
+             cache=None, # typing.Union[None, collections.abc.MutableMapping]
+             lru_cache=None, # type: typing.Union[int, bool, None]
+             decimals_to_float=None, # type: typing.Union[int, bool, None]
+             propagate_errors=None,  # type: typing.Union[int, bool, typing.Dict[str, bool], None]
+             propagate_errors_filter=None  # type: typing.Union[typing.Callable, typing.Dict[str, typing.Callable], None]
              ):  # type: (...) -> _Decorator
     """
     Decorator for exposing python functions as macros.
@@ -1077,6 +1407,32 @@ def xl_macro(signature=None,  # type: typing.Union[str, _Function, None]
         return func
     return dummy_decorator
 
+@typing.overload
+def xl_menu(
+        name,  # type: _Function
+        menu=None,  # type: typing.Union[str, None]
+        sub_menu=None,  # type: typing.Union[str, None]
+        order=None,  # type: typing.Union[int, None]
+        sub_order=None,  # type: typing.Union[int, None]
+        menu_order=None,  # type: typing.Union[int, None]
+        allow_abort=None,  # type: typing.Union[bool, None]
+        shortcut=None  # type: typing.Union[str, None]
+):  # type: (...) -> _Function
+    ...
+
+@typing.overload
+def xl_menu(
+        name=None,  # type: typing.Union[str, None]
+        menu=None,  # type: typing.Union[str, None]
+        sub_menu=None,  # type: typing.Union[str, None]
+        order=None,  # type: typing.Union[int, None]
+        sub_order=None,  # type: typing.Union[int, None]
+        menu_order=None,  # type: typing.Union[int, None]
+        allow_abort=None,  # type: typing.Union[bool, None]
+        shortcut=None  # type: typing.Union[str, None]
+):  # type: (...) -> typing.Callable[[_Function], _Function]
+    ...
+
 def xl_menu(name=None,  # type: typing.Union[str, _Function, None]
             menu=None,  # type: typing.Union[str, None]
             sub_menu=None,  # type: typing.Union[str, None]
@@ -1085,7 +1441,7 @@ def xl_menu(name=None,  # type: typing.Union[str, _Function, None]
             menu_order=None,  # type: typing.Union[int, None]
             allow_abort=None,  # type: typing.Union[bool, None]
             shortcut=None  # type: typing.Union[str, None]
-            ):  # type: (...) -> _Decorator
+            ): # type: (...) -> _Decorator
     """
     Decorator for creating custom menu items.
 
@@ -1314,6 +1670,16 @@ def _validate_ribbon_xml(xml):
     Returns validated xml as text.
     """
 
+    # Early out if ribbon validation is disabled
+    cfg = get_config()
+    if cfg.has_option("PYXLL", "disable_ribbon_validation"):
+        cfg_value = cfg.get("PYXLL", "disable_ribbon_validation")
+        try:
+            if bool(int(cfg.get("PYXLL", "disable_ribbon_validation"))):
+                return
+        except (TypeError, ValueError):
+            _log.warning("Unexpected value for 'disable_ribbon_validation' (expected 0 or 1): %s" % cfg_value)
+
     xml = _xml_to_dom(xml)
 
     if not xml.documentElement:
@@ -1395,11 +1761,13 @@ def set_ribbon_tab(xml, tab_id=None, reload=True):
     if tabs:
         tabs = tabs[0]  # type: ignore
     else:
-        ribbon = new_xml.getElementsByTagName("ribbon")
-        if ribbon:
-            ribbon = ribbon[0]  # type: ignore
+        ribbons = new_xml.getElementsByTagName("ribbon")
+        if ribbons:
+            ribbon = ribbons[0]  # type: ignore
         else:
             ribbon = new_xml.createElement("ribbon")  # type: ignore
+            if new_xml.documentElement is None:
+                raise RuntimeError("Document element missing")
             new_xml.documentElement.appendChild(ribbon)
         tabs = new_xml.createElement("tabs")  # type: ignore
         ribbon.appendChild(tabs)  # type: ignore
@@ -1535,10 +1903,53 @@ class ErrorContext:
         self.function_name = function_name
         self.import_errors = import_errors
 
+def _propagated_error_handler(context, exc_type, exc_value, exc_traceback):
+    msg = None
+    args = getattr(exc_value, "args", None)
+    if isinstance(args, (list, tuple)) and len(args) > 0:
+        value = args[0]
+        if isinstance(value, LookupError):
+            msg = "#NULL!"
+        elif isinstance(value, ZeroDivisionError):
+            msg = "#DIV/0!"
+        elif isinstance(value, ValueError):
+            msg = "#VALUE!"
+        elif isinstance(value, ReferenceError):
+            msg = "#REF!"
+        elif isinstance(value, NameError):
+            msg = "#NAME!"
+        elif isinstance(value, ArithmeticError):
+            msg = "#NUM!"
+        elif isinstance(value, RuntimeError):
+            msg = "#N/A"
+
+    if msg is None:
+        # Get the message part from the previous error string.
+        # This assumes the default error handler is being used.
+        msg = str(exc_value)
+        while True:
+            match = re.match(r"^##[A-Z_][A-Z0-9_\.]*:\s*(.*)$", msg, re.IGNORECASE)
+            if not match:
+                break
+            msg = match.group(1).strip()
+
+    error = "##PropagatedError"
+    if msg:
+        error += ": " + msg
+
+    # Truncate long errors to avoid conversion problems
+    if len(error) > 254:
+        return error[:251] + "..."
+
+    return error
+
 def error_handler(context, exc_type, exc_value, exc_traceback):
     """Standard PyXLL error handler."""
     # For UDFs return a preview of the error as a single line
     if context.error_type in (ErrorContext.Type.UDF, ErrorContext.Type.MACRO):
+        if issubclass(exc_type, PropagatedError):
+            return _propagated_error_handler(context, exc_type, exc_value, exc_traceback)
+
         error = "##" + getattr(exc_type, "__name__", "Error")
         msg = str(exc_value)
 
@@ -1597,6 +2008,9 @@ def error_handler_quiet(context, exc_type, exc_value, exc_traceback):
     """PyXLL error handler that doesn't display any error dialogs"""
     # For UDFs return a preview of the error as a single line
     if context.error_type in (ErrorContext.Type.UDF, ErrorContext.Type.MACRO):
+        if issubclass(exc_type, PropagatedError):
+            return _propagated_error_handler(context, exc_type, exc_value, exc_traceback)
+
         error = "##" + getattr(exc_type, "__name__", "Error")
         msg = str(exc_value)
         if msg:
@@ -1616,7 +2030,7 @@ def _wrap_iunknown(unk, no_dynamic_dispatch=False):
     # they don't exist)
     try:
         from win32com.client.gencache import EnsureDispatch  # type: ignore
-        return EnsureDispatch(disp)
+        return EnsureDispatch(disp, bForDemand=0)
     except:
         if no_dynamic_dispatch:
             raise
@@ -1649,6 +2063,11 @@ def _get_iunknown_package(unk):
 class BaseFormatter(object):
     """Base class used for formatting Excel ranges.
     """
+    def __init__(self, clear=True):
+        self.__clear = clear
+        self.__cached_type_descriptors = {}
+        self.__cached_inner_types = {}
+
     @classmethod
     def __get_numpy(cls):
         try:
@@ -1707,6 +2126,74 @@ class BaseFormatter(object):
 
         return new_value
 
+    def _get_inner_type_descriptors(self, datatype=None, datatype_ndim=0, datatype_kwargs={}):
+        """Return the inner TypeDescriptors for meta-types, like optional and union.
+
+        If the datatype is an optional or union type, return a list of inner TypeDescriptors
+        in the order they appear in the type descriptor from left to right.
+
+        This is a recursive function that returns the ultimate inner types for nested meta-types.
+
+        If the datatype is not an optional or union type, return None.
+        """
+        if datatype is None or datatype_ndim != 0:
+            return None
+
+        type_desc = datatype
+        if not isinstance(type_desc, TypeDescriptor):
+            try:
+                type_desc = self.__cached_type_descriptors[datatype]
+            except KeyError:
+                type_desc = TypeDescriptor.create(datatype)
+                self.__cached_type_descriptors[datatype] = type_desc
+
+        if type_desc.name not in ("optional", "union"):
+            return None
+
+        if datatype_kwargs:
+            type_desc = type_desc.clone(kwargs=datatype_kwargs)
+
+        type_desc_str = str(type_desc)
+        try:
+            return self.__cached_inner_types[type_desc_str]
+        except KeyError:
+            pass
+
+        if type_desc.name == "optional":
+            dtype = type_desc.kwargs.get("T", None)
+            if dtype is None and type_desc.args:
+                dtype = type_desc.args[0]
+
+            if dtype is None:
+                return None
+
+            if not isinstance(dtype, TypeDescriptor):
+                dtype = TypeDescriptor.create(dtype)
+
+            inner_dtypes = self._get_inner_type_descriptors(dtype)
+            if inner_dtypes is None:
+                inner_dtypes = [dtype]
+
+            self.__cached_inner_types[type_desc_str] = inner_dtypes
+            return inner_dtypes
+
+        elif type_desc.name == "union":
+            dtypes = []
+            for dtype in type_desc.args:
+                if not isinstance(dtype, TypeDescriptor):
+                    dtype = TypeDescriptor.create(dtype)
+
+                inner_dtypes = self._get_inner_type_descriptors(dtype)
+                if inner_dtypes is None:
+                    inner_dtypes = [dtype]
+
+                dtypes.extend(inner_dtypes)
+
+            self.__cached_inner_types[type_desc_str] = dtypes
+            return dtypes
+
+        return None
+
     def apply(self, cell, value=None, datatype=None, datatype_ndim=0, datatype_kwargs={}, transpose=False):
         """Apply formatting to a cell or range of cells.
 
@@ -1717,7 +2204,7 @@ class BaseFormatter(object):
         :param datatype_kwargs: Data-type keyword arguments.
         :param transpose: True if the value should be transposed before styling.
         """
-        if self.apply_cell is not BaseFormatter.apply_cell:
+        if _has_method_override(self, "apply_cell", BaseFormatter):
             value = self.__resize_array(value, cell, datatype, datatype_ndim, transpose)
             for i, row_value in enumerate(value):
                     for j, cell_value in enumerate(row_value):
@@ -1726,8 +2213,7 @@ class BaseFormatter(object):
                                         datatype=datatype,
                                         datatype_kwargs=datatype_kwargs)
 
-    @staticmethod
-    def apply_cell(cell, value=None, datatype=None, datatype_kwargs={}):
+    def apply_cell(self, cell, value=None, datatype=None, datatype_kwargs={}):
         """Called for each cell to apply any formatting.
 
         For most Formatter classes this is the only method that needs to
@@ -1740,14 +2226,14 @@ class BaseFormatter(object):
         """
         pass
 
-    @staticmethod
-    def clear(cell):
+    def clear(self, cell):
         """Clears any formatting from a cell or range of cells."""
-        r = cell.to_range()
-        r.Style = "Normal"
+        if self.__clear:
+            r = cell.to_range()
+            r.Style = "Normal"
+        return self.__clear
 
-    @staticmethod
-    def apply_if_nested():
+    def apply_if_nested(self):
         """Return True if formatter is to be applied when the function appears inside a nested formula.
         If True and the formatter is applied to a nested function, the methods clear_nested and apply_nested
         will be called.
@@ -1845,17 +2331,27 @@ class FormatterCollection(BaseFormatter):
                             transpose=transpose)
 
     def clear(self, cell):
-        # Only call clear once unless implemented differently from the base class
+        # Only call clear once unless implemented differently from the base class.
+        # BaseFormatter.clear returns True if the range was cleared.
         cleared = False
         for formatter in self.__formatters:
-            if not cleared or formatter.clear is not BaseFormatter.clear:
-                formatter.clear(cell)
-                cleared = True
+            has_clear_override = _has_method_override(formatter, "clear", BaseFormatter)
+            if not cleared or has_clear_override:
+                result = formatter.clear(cell)
+                if not has_clear_override and result:
+                    cleared = True
 
     def clear_nested(self, *args, **kwargs):
+        # Only call clear once unless implemented differently from the base class.
+        # BaseFormatter.clear returns True if the range was cleared.
+        cleared = False
         for formatter in self.__formatters:
             if formatter.apply_if_nested():
-                formatter.clear(*args, **kwargs)
+                has_clear_override = _has_method_override(formatter, "clear", BaseFormatter)
+                if not cleared or has_clear_override:
+                    result = formatter.clear(*args, **kwargs)
+                    if not has_clear_override and result:
+                        cleared = True
 
     def apply_if_nested(self):
         for formatter in self.__formatters:
@@ -1908,8 +2404,9 @@ class Formatter(BaseFormatter):
                  italic=None,
                  font_size=None,
                  number_format=None,
-                 auto_fit=None):
-        BaseFormatter.__init__(self)
+                 auto_fit=None,
+                 clear=True):
+        BaseFormatter.__init__(self, clear=clear)
         self.__style = {}
         if interior_color is not None:
             self.__style["interior_color"] = interior_color
@@ -1993,12 +2490,32 @@ class DateFormatter(Formatter):
 
     def apply_cell(self, cell, value=None, datatype=None, datatype_kwargs={}):
         """Apply the relevant formatting."""
-        if datatype is None or "var":
-            if isinstance(value, datetime.datetime):
+        # Inspect the value type first to avoid duplicating these tests
+        is_datetime = isinstance(value, datetime.datetime)
+        has_date = is_datetime or isinstance(value, datetime.date)
+        has_time = is_datetime or isinstance(value, datetime.time)
+
+        # Extract the relevant inner type from optional or union types
+        inner_dtypes = self._get_inner_type_descriptors(datatype, datatype_kwargs=datatype_kwargs)
+        if inner_dtypes:
+            for inner_dtype in inner_dtypes:
+                if is_datetime and "datetime" in inner_dtype.return_base_type_names:
+                    datatype = "datetime"
+                    break
+                elif has_date and "date" in inner_dtype.return_base_type_names:
+                    datatype = "date"
+                    break
+                elif has_time and "time" in inner_dtype.return_base_type_names:
+                    datatype = "time"
+                    break
+
+        # If our datatype is not a datetime type, try to guess it from the value
+        if datatype not in ("datetime", "date", "time"):
+            if is_datetime:
                 datatype = "datetime"
-            elif isinstance(value, datetime.date):
+            elif has_date:
                 datatype = "date"
-            elif isinstance(value, datetime.time):
+            elif has_time:
                 datatype = "time"
 
         number_format = None
@@ -2151,7 +2668,7 @@ class DataFrameFormatter(Formatter):
                 raise TypeError("Expected 'columns' to be a dict of formatters")
 
             self.__column_formatters = {}
-            for key, formatters in list(columns.items()):
+            for key, formatters in columns.items():
                 if not isinstance(formatters, list):
                     formatters = [formatters]
                 self.__column_formatters[key] = []
@@ -2188,31 +2705,46 @@ class DataFrameFormatter(Formatter):
                         datatype_ndim=datatype_ndim,
                         datatype_kwargs=datatype_kwargs,
                         transpose=transpose)
-
+        # Convert the outer datatype to a TypeDescriptor
         type_desc = TypeDescriptor.create(datatype, kwargs=datatype_kwargs)
-        if (("pandas.dataframe" not in type_desc.return_base_type_names
-                and "dataframe" not in type_desc.return_base_type_names)
-                    or datatype_ndim != 0):
-            _log.warning("DataFrameFormatter applied to a function without return type pandas.DataFrame: %s" % str(type_desc))
-            return
+        if datatype_ndim:
+            type_desc = type_desc.clone(ndim=datatype_ndim)
+
+        # Find the inner DataFrame type descriptor if it's not the outer one
+        df_type_desc = type_desc
+        if (("pandas.dataframe" not in df_type_desc.return_base_type_names
+                and "dataframe" not in df_type_desc.return_base_type_names)
+                    or df_type_desc.ndim != 0):
+            # Check for any inner types
+            inner_dtypes = self._get_inner_type_descriptors(df_type_desc)
+            for inner_dtype in inner_dtypes:
+                if "pandas.dataframe" in inner_dtype.return_base_type_names \
+                or "dataframe" in inner_dtype.return_base_type_names:
+                    df_type_desc = inner_dtype
+                    break
+            else:
+                _log.warning("DataFrameFormatter applied to a function without return type pandas.DataFrame: %s" % str(type_desc))
+                return
 
         pd, np = _pandas_get_imports()
         if not isinstance(value, pd.DataFrame):
-            _log.warning("DataFrameFormatter applied to a non-pandas.DataFrame result: %s" % type(value))
+            # If the type is not union or optional, and we were not passed a DataFrame, log a warning
+            if df_type_desc is type_desc:
+                _log.warning("DataFrameFormatter applied to a non-pandas.DataFrame result: %s" % type(value))
             return
 
         df = value
-        df_to_array = get_type_converter(datatype, "__internal__", src_kwargs=datatype_kwargs)
+        df_to_array = get_type_converter(df_type_desc, "__internal__")
         df_array = df_to_array(value)
 
         header_rows = 0
-        if datatype_kwargs.get("columns", True):
+        if df_type_desc.kwargs.get("columns", True):
             header_rows = 1
             if isinstance(df.columns, pd.MultiIndex):
                 header_rows = len(df.columns.levels)
 
         index_cols = 0
-        if datatype_kwargs.get("index", False):
+        if df_type_desc.kwargs.get("index", False):
             index_cols = 1
             if isinstance(df.index, pd.MultiIndex):
                 index_cols = len(df.index.levels)
@@ -2297,7 +2829,7 @@ class DataFrameFormatter(Formatter):
                                     transpose=transpose)
 
         if self.__column_formatters and num_rows:
-            for col, formatters in list(self.__column_formatters.items()):
+            for col, formatters in self.__column_formatters.items():
                 try:
                     col_idx = df.columns.get_loc(col)
                 except KeyError:
@@ -2365,7 +2897,7 @@ class UIBridge:
         pass
 
     def get_hwnd(self):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def pre_attach(self, hwnd):
         pass
@@ -2729,3 +3261,594 @@ def xl_disable(automatic_calculations=True,
     """
     flags = 0
     return _DisableUpdatesContextManager(flags)
+
+# Events
+
+_EventHandler = typing.TypeVar("_EventHandler", bound=typing.Callable[..., typing.Any])
+_EventFilter = typing.TypeVar("_EventFilter", bound=typing.Callable[..., bool], contravariant=True)
+
+class _EventHandlerDecorator(typing.Protocol[_EventHandler, _EventFilter]):
+    @typing.overload
+    def __call__(self,
+                 func: _EventHandler,
+                 filter: typing.Optional[_EventFilter] = None,
+                 com_package: typing.Optional[str] = None) -> _EventHandler: ...
+
+    @typing.overload
+    def __call__(self,
+                 func: None = None,
+                 filter: typing.Optional[_EventFilter] = None,
+                 com_package: typing.Optional[str] = None) -> typing.Callable[[_EventHandler], _EventHandler]: ...
+
+class _NewWorkbookFunc(typing.Protocol):
+    def __call__(self, workbook): ...
+
+class _NewWorkbookFilter(typing.Protocol):
+    def __call__(self, workbook) -> bool: ...
+
+_NewWorkbookDecorator = _EventHandlerDecorator[_NewWorkbookFunc, _NewWorkbookFilter]
+
+class _SheetSelectionChangeFunc(typing.Protocol):
+    def __call__(self, sheet, target): ...
+
+class _SheetSelectionChangeFilter(typing.Protocol):
+    def __call__(self, sheet, target) -> bool: ...
+
+_SheetSelectionChangeDecorator = _EventHandlerDecorator[_SheetSelectionChangeFunc, _SheetSelectionChangeFilter]
+
+class _SheetBeforeDoubleClickFunc(typing.Protocol):
+    def __call__(self, sheet, target, cancel): ...
+
+class _SheetBeforeDoubleClickFilter(typing.Protocol):
+    def __call__(self, sheet, target, cancel) -> bool: ...
+
+_SheetBeforeDoubleClickDecorator = _EventHandlerDecorator[_SheetBeforeDoubleClickFunc, _SheetBeforeDoubleClickFilter]
+
+class _SheetBeforeRightClickFunc(typing.Protocol):
+    def __call__(self, sheet, target, cancel): ...
+
+class _SheetBeforeRightClickFilter(typing.Protocol):
+    def __call__(self, sheet, target, cancel) -> bool: ...
+
+_SheetBeforeRightClickDecorator = _EventHandlerDecorator[_SheetBeforeRightClickFunc, _SheetBeforeRightClickFilter]
+
+class _SheetActivateFunc(typing.Protocol):
+    def __call__(self, sheet): ...
+
+class _SheetActivateFilter(typing.Protocol):
+    def __call__(self, sheet) -> bool: ...
+
+_SheetActivateDecorator = _EventHandlerDecorator[_SheetActivateFunc, _SheetActivateFilter]
+
+class _SheetDeactivateFunc(typing.Protocol):
+    def __call__(self, sheet): ...
+
+class _SheetDeactivateFilter(typing.Protocol):
+    def __call__(self, sheet) -> bool: ...
+
+_SheetDeactivateDecorator = _EventHandlerDecorator[_SheetDeactivateFunc, _SheetDeactivateFilter]
+
+class _SheetCalculateFunc(typing.Protocol):
+    def __call__(self, sheet): ...
+
+class _SheetCalculateFilter(typing.Protocol):
+    def __call__(self, sheet) -> bool: ...
+
+_SheetCalculateDecorator = _EventHandlerDecorator[_SheetCalculateFunc, _SheetCalculateFilter]
+
+class _SheetChangeFunc(typing.Protocol):
+    def __call__(self, sheet, target): ...
+
+class _SheetChangeFilter(typing.Protocol):
+    def __call__(self, sheet, target) -> bool: ...
+
+_SheetChangeDecorator = _EventHandlerDecorator[_SheetChangeFunc, _SheetChangeFilter]
+
+class _WorkbookOpenFunc(typing.Protocol):
+    def __call__(self, workbook): ...
+
+class _WorkbookOpenFilter(typing.Protocol):
+    def __call__(self, workbook) -> bool: ...
+
+_WorkbookOpenDecorator = _EventHandlerDecorator[_WorkbookOpenFunc, _WorkbookOpenFilter]
+
+class _WorkbookActivateFunc(typing.Protocol):
+    def __call__(self, workbook): ...
+
+class _WorkbookActivateFilter(typing.Protocol):
+    def __call__(self, workbook) -> bool: ...
+
+_WorkbookActivateDecorator = _EventHandlerDecorator[_WorkbookActivateFunc, _WorkbookActivateFilter]
+
+class _WorkbookDeactivateFunc(typing.Protocol):
+    def __call__(self, workbook): ...
+
+class _WorkbookDeactivateFilter(typing.Protocol):
+    def __call__(self, workbook) -> bool: ...
+
+_WorkbookDeactivateDecorator = _EventHandlerDecorator[_WorkbookDeactivateFunc, _WorkbookDeactivateFilter]
+
+class _WorkbookBeforeCloseFunc(typing.Protocol):
+    def __call__(self, workbook, cancel): ...
+
+class _WorkbookBeforeCloseFilter(typing.Protocol):
+    def __call__(self, workbook, cancel) -> bool: ...
+
+_WorkbookBeforeCloseDecorator = _EventHandlerDecorator[_WorkbookBeforeCloseFunc, _WorkbookBeforeCloseFilter]
+
+class _WorkbookBeforeSaveFunc(typing.Protocol):
+    def __call__(self, workbook, save_as_ui, cancel): ...
+
+class _WorkbookBeforeSaveFilter(typing.Protocol):
+    def __call__(self, workbook, save_as_ui, cancel) -> bool: ...
+
+_WorkbookBeforeSaveDecorator = _EventHandlerDecorator[_WorkbookBeforeSaveFunc, _WorkbookBeforeSaveFilter]
+
+class _WorkbookBeforePrintFunc(typing.Protocol):
+    def __call__(self, workbook, cancel): ...
+
+class _WorkbookBeforePrintFilter(typing.Protocol):
+    def __call__(self, workbook, cancel) -> bool: ...
+
+_WorkbookBeforePrintDecorator = _EventHandlerDecorator[_WorkbookBeforePrintFunc, _WorkbookBeforePrintFilter]
+
+class _WorkbookNewSheetFunc(typing.Protocol):
+    def __call__(self, workbook, sheet): ...
+
+class _WorkbookNewSheetFilter(typing.Protocol):
+    def __call__(self, workbook, sheet) -> bool: ...
+
+_WorkbookNewSheetDecorator = _EventHandlerDecorator[_WorkbookNewSheetFunc, _WorkbookNewSheetFilter]
+
+class _WorkbookAddinInstallFunc(typing.Protocol):
+    def __call__(self, workbook): ...
+
+class _WorkbookAddinInstallFilter(typing.Protocol):
+    def __call__(self, workbook) -> bool: ...
+
+_WorkbookAddinInstallDecorator = _EventHandlerDecorator[_WorkbookAddinInstallFunc, _WorkbookAddinInstallFilter]
+
+class _WorkbookAddinUninstallFunc(typing.Protocol):
+    def __call__(self, workbook): ...
+
+class _WorkbookAddinUninstallFilter(typing.Protocol):
+    def __call__(self, workbook) -> bool: ...
+
+_WorkbookAddinUninstallDecorator = _EventHandlerDecorator[_WorkbookAddinUninstallFunc, _WorkbookAddinUninstallFilter]
+
+class _WindowResizeFunc(typing.Protocol):
+    def __call__(self, workbook, wn): ...
+
+class _WindowResizeFilter(typing.Protocol):
+    def __call__(self, workbook, wn) -> bool: ...
+
+_WindowResizeDecorator = _EventHandlerDecorator[_WindowResizeFunc, _WindowResizeFilter]
+
+class _WindowActivateFunc(typing.Protocol):
+    def __call__(self, workbook, wn): ...
+
+class _WindowActivateFilter(typing.Protocol):
+    def __call__(self, workbook, wn) -> bool: ...
+
+_WindowActivateDecorator = _EventHandlerDecorator[_WindowActivateFunc, _WindowActivateFilter]
+
+class _WindowDeactivateFunc(typing.Protocol):
+    def __call__(self, workbook, wn): ...
+
+class _WindowDeactivateFilter(typing.Protocol):
+    def __call__(self, workbook, wn) -> bool: ...
+
+_WindowDeactivateDecorator = _EventHandlerDecorator[_WindowDeactivateFunc, _WindowDeactivateFilter]
+
+class _SheetFollowHyperlinkFunc(typing.Protocol):
+    def __call__(self, sheet, target): ...
+
+class _SheetFollowHyperlinkFilter(typing.Protocol):
+    def __call__(self, sheet, target) -> bool: ...
+
+_SheetFollowHyperlinkDecorator = _EventHandlerDecorator[_SheetFollowHyperlinkFunc, _SheetFollowHyperlinkFilter]
+
+class _SheetPivotTableUpdateFunc(typing.Protocol):
+    def __call__(self, sheet, target): ...
+
+class _SheetPivotTableUpdateFilter(typing.Protocol):
+    def __call__(self, sheet, target) -> bool: ...
+
+_SheetPivotTableUpdateDecorator = _EventHandlerDecorator[_SheetPivotTableUpdateFunc, _SheetPivotTableUpdateFilter]
+
+class _WorkbookPivotTableCloseConnectionFunc(typing.Protocol):
+    def __call__(self, workbook, target): ...
+
+class _WorkbookPivotTableCloseConnectionFilter(typing.Protocol):
+    def __call__(self, workbook, target) -> bool: ...
+
+_WorkbookPivotTableCloseConnectionDecorator = _EventHandlerDecorator[_WorkbookPivotTableCloseConnectionFunc, _WorkbookPivotTableCloseConnectionFilter]
+
+class _WorkbookPivotTableOpenConnectionFunc(typing.Protocol):
+    def __call__(self, workbook, target): ...
+
+class _WorkbookPivotTableOpenConnectionFilter(typing.Protocol):
+    def __call__(self, workbook, target) -> bool: ...
+
+_WorkbookPivotTableOpenConnectionDecorator = _EventHandlerDecorator[_WorkbookPivotTableOpenConnectionFunc, _WorkbookPivotTableOpenConnectionFilter]
+
+class _WorkbookSyncFunc(typing.Protocol):
+    def __call__(self, workbook, sync_event_type): ...
+
+class _WorkbookSyncFilter(typing.Protocol):
+    def __call__(self, workbook, sync_event_type) -> bool: ...
+
+_WorkbookSyncDecorator = _EventHandlerDecorator[_WorkbookSyncFunc, _WorkbookSyncFilter]
+
+class _WorkbookBeforeXmlImportFunc(typing.Protocol):
+    def __call__(self, workbook, xml_map, url, is_refresh, cancel): ...
+
+class _WorkbookBeforeXmlImportFilter(typing.Protocol):
+    def __call__(self, workbook, xml_map, url, is_refresh, cancel) -> bool: ...
+
+_WorkbookBeforeXmlImportDecorator = _EventHandlerDecorator[_WorkbookBeforeXmlImportFunc, _WorkbookBeforeXmlImportFilter]
+
+class _WorkbookAfterXmlImportFunc(typing.Protocol):
+    def __call__(self, workbook, xml_map, is_refresh, result): ...
+
+class _WorkbookAfterXmlImportFilter(typing.Protocol):
+    def __call__(self, workbook, xml_map, is_refresh, result) -> bool: ...
+
+_WorkbookAfterXmlImportDecorator = _EventHandlerDecorator[_WorkbookAfterXmlImportFunc, _WorkbookAfterXmlImportFilter]
+
+class _WorkbookBeforeXmlExportFunc(typing.Protocol):
+    def __call__(self, workbook, xml_map, url, cancel): ...
+
+class _WorkbookBeforeXmlExportFilter(typing.Protocol):
+    def __call__(self, workbook, xml_map, url, cancel) -> bool: ...
+
+_WorkbookBeforeXmlExportDecorator = _EventHandlerDecorator[_WorkbookBeforeXmlExportFunc, _WorkbookBeforeXmlExportFilter]
+
+class _WorkbookAfterXmlExportFunc(typing.Protocol):
+    def __call__(self, workbook, xml_map, url, result): ...
+
+class _WorkbookAfterXmlExportFilter(typing.Protocol):
+    def __call__(self, workbook, xml_map, url, result) -> bool: ...
+
+_WorkbookAfterXmlExportDecorator = _EventHandlerDecorator[_WorkbookAfterXmlExportFunc, _WorkbookAfterXmlExportFilter]
+
+class _WorkbookRowsetCompleteFunc(typing.Protocol):
+    def __call__(self, workbook, description, sheet, success): ...
+
+class _WorkbookRowsetCompleteFilter(typing.Protocol):
+    def __call__(self, workbook, description, sheet, success) -> bool: ...
+
+_WorkbookRowsetCompleteDecorator = _EventHandlerDecorator[_WorkbookRowsetCompleteFunc, _WorkbookRowsetCompleteFilter]
+
+class _AfterCalculateFunc(typing.Protocol):
+    def __call__(self): ...
+
+class _AfterCalculateFilter(typing.Protocol):
+    def __call__(self) -> bool: ...
+
+_AfterCalculateDecorator = _EventHandlerDecorator[_AfterCalculateFunc, _AfterCalculateFilter]
+
+class _SheetPivotTableAfterValueChangeFunc(typing.Protocol):
+    def __call__(self, sheet, target_pivot_table, target_range): ...
+
+class _SheetPivotTableAfterValueChangeFilter(typing.Protocol):
+    def __call__(self, sheet, target_pivot_table, target_range) -> bool: ...
+
+_SheetPivotTableAfterValueChangeDecorator = _EventHandlerDecorator[_SheetPivotTableAfterValueChangeFunc, _SheetPivotTableAfterValueChangeFilter]
+
+class _SheetPivotTableBeforeAllocateChangesFunc(typing.Protocol):
+    def __call__(self, sheet, target_pivot_table, value_change_start, value_change_end, cancel): ...
+
+class _SheetPivotTableBeforeAllocateChangesFilter(typing.Protocol):
+    def __call__(self, sheet, target_pivot_table, value_change_start, value_change_end, cancel) -> bool: ...
+
+_SheetPivotTableBeforeAllocateChangesDecorator = _EventHandlerDecorator[_SheetPivotTableBeforeAllocateChangesFunc, _SheetPivotTableBeforeAllocateChangesFilter]
+
+class _SheetPivotTableBeforeCommitChangesFunc(typing.Protocol):
+    def __call__(self, sheet, target_pivot_table, value_change_start, value_change_end, cancel): ...
+
+class _SheetPivotTableBeforeCommitChangesFilter(typing.Protocol):
+    def __call__(self, sheet, target_pivot_table, value_change_start, value_change_end, cancel) -> bool: ...
+
+_SheetPivotTableBeforeCommitChangesDecorator = _EventHandlerDecorator[_SheetPivotTableBeforeCommitChangesFunc, _SheetPivotTableBeforeCommitChangesFilter]
+
+class _SheetPivotTableBeforeDiscardChangesFunc(typing.Protocol):
+    def __call__(self, sheet, target_pivot_table, value_change_start, value_change_end): ...
+
+class _SheetPivotTableBeforeDiscardChangesFilter(typing.Protocol):
+    def __call__(self, sheet, target_pivot_table, value_change_start, value_change_end) -> bool: ...
+
+_SheetPivotTableBeforeDiscardChangesDecorator = _EventHandlerDecorator[_SheetPivotTableBeforeDiscardChangesFunc, _SheetPivotTableBeforeDiscardChangesFilter]
+
+class _ProtectedViewWindowOpenFunc(typing.Protocol):
+    def __call__(self, window): ...
+
+class _ProtectedViewWindowOpenFilter(typing.Protocol):
+    def __call__(self, window) -> bool: ...
+
+_ProtectedViewWindowOpenDecorator = _EventHandlerDecorator[_ProtectedViewWindowOpenFunc, _ProtectedViewWindowOpenFilter]
+
+class _ProtectedViewWindowBeforeEditFunc(typing.Protocol):
+    def __call__(self, window, cancel): ...
+
+class _ProtectedViewWindowBeforeEditFilter(typing.Protocol):
+    def __call__(self, window, cancel) -> bool: ...
+
+_ProtectedViewWindowBeforeEditDecorator = _EventHandlerDecorator[_ProtectedViewWindowBeforeEditFunc, _ProtectedViewWindowBeforeEditFilter]
+
+class _ProtectedViewWindowBeforeCloseFunc(typing.Protocol):
+    def __call__(self, window, reason, cancel): ...
+
+class _ProtectedViewWindowBeforeCloseFilter(typing.Protocol):
+    def __call__(self, window, reason, cancel) -> bool: ...
+
+_ProtectedViewWindowBeforeCloseDecorator = _EventHandlerDecorator[_ProtectedViewWindowBeforeCloseFunc, _ProtectedViewWindowBeforeCloseFilter]
+
+class _ProtectedViewWindowResizeFunc(typing.Protocol):
+    def __call__(self, window): ...
+
+class _ProtectedViewWindowResizeFilter(typing.Protocol):
+    def __call__(self, window) -> bool: ...
+
+_ProtectedViewWindowResizeDecorator = _EventHandlerDecorator[_ProtectedViewWindowResizeFunc, _ProtectedViewWindowResizeFilter]
+
+class _ProtectedViewWindowActivateFunc(typing.Protocol):
+    def __call__(self, window): ...
+
+class _ProtectedViewWindowActivateFilter(typing.Protocol):
+    def __call__(self, window) -> bool: ...
+
+_ProtectedViewWindowActivateDecorator = _EventHandlerDecorator[_ProtectedViewWindowActivateFunc, _ProtectedViewWindowActivateFilter]
+
+class _ProtectedViewWindowDeactivateFunc(typing.Protocol):
+    def __call__(self, window): ...
+
+class _ProtectedViewWindowDeactivateFilter(typing.Protocol):
+    def __call__(self, window) -> bool: ...
+
+_ProtectedViewWindowDeactivateDecorator = _EventHandlerDecorator[_ProtectedViewWindowDeactivateFunc, _ProtectedViewWindowDeactivateFilter]
+
+class _WorkbookAfterSaveFunc(typing.Protocol):
+    def __call__(self, workbook, success): ...
+
+class _WorkbookAfterSaveFilter(typing.Protocol):
+    def __call__(self, workbook, success) -> bool: ...
+
+_WorkbookAfterSaveDecorator = _EventHandlerDecorator[_WorkbookAfterSaveFunc, _WorkbookAfterSaveFilter]
+
+class _WorkbookNewChartFunc(typing.Protocol):
+    def __call__(self, workbook, chart): ...
+
+class _WorkbookNewChartFilter(typing.Protocol):
+    def __call__(self, workbook, chart) -> bool: ...
+
+_WorkbookNewChartDecorator = _EventHandlerDecorator[_WorkbookNewChartFunc, _WorkbookNewChartFilter]
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["NewWorkbook"]) -> _NewWorkbookDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["SheetSelectionChange"]) -> _SheetSelectionChangeDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["SheetBeforeDoubleClick"]) -> _SheetBeforeDoubleClickDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["SheetBeforeRightClick"]) -> _SheetBeforeRightClickDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["SheetActivate"]) -> _SheetActivateDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["SheetDeactivate"]) -> _SheetDeactivateDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["SheetCalculate"]) -> _SheetCalculateDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["SheetChange"]) -> _SheetChangeDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookOpen"]) -> _WorkbookOpenDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookActivate"]) -> _WorkbookActivateDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookDeactivate"]) -> _WorkbookDeactivateDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookBeforeClose"]) -> _WorkbookBeforeCloseDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookBeforeSave"]) -> _WorkbookBeforeSaveDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookBeforePrint"]) -> _WorkbookBeforePrintDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookNewSheet"]) -> _WorkbookNewSheetDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookAddinInstall"]) -> _WorkbookAddinInstallDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookAddinUninstall"]) -> _WorkbookAddinUninstallDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WindowResize"]) -> _WindowResizeDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WindowActivate"]) -> _WindowActivateDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WindowDeactivate"]) -> _WindowDeactivateDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["SheetFollowHyperlink"]) -> _SheetFollowHyperlinkDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["SheetPivotTableUpdate"]) -> _SheetPivotTableUpdateDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookPivotTableCloseConnection"]) -> _WorkbookPivotTableCloseConnectionDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookPivotTableOpenConnection"]) -> _WorkbookPivotTableOpenConnectionDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookSync"]) -> _WorkbookSyncDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookBeforeXmlImport"]) -> _WorkbookBeforeXmlImportDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookAfterXmlImport"]) -> _WorkbookAfterXmlImportDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookBeforeXmlExport"]) -> _WorkbookBeforeXmlExportDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookAfterXmlExport"]) -> _WorkbookAfterXmlExportDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookRowsetComplete"]) -> _WorkbookRowsetCompleteDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["AfterCalculate"]) -> _AfterCalculateDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["SheetPivotTableAfterValueChange"]) -> _SheetPivotTableAfterValueChangeDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["SheetPivotTableBeforeAllocateChanges"]) -> _SheetPivotTableBeforeAllocateChangesDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["SheetPivotTableBeforeCommitChanges"]) -> _SheetPivotTableBeforeCommitChangesDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["SheetPivotTableBeforeDiscardChanges"]) -> _SheetPivotTableBeforeDiscardChangesDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["ProtectedViewWindowOpen"]) -> _ProtectedViewWindowOpenDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["ProtectedViewWindowBeforeEdit"]) -> _ProtectedViewWindowBeforeEditDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["ProtectedViewWindowBeforeClose"]) -> _ProtectedViewWindowBeforeCloseDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["ProtectedViewWindowResize"]) -> _ProtectedViewWindowResizeDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["ProtectedViewWindowActivate"]) -> _ProtectedViewWindowActivateDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["ProtectedViewWindowDeactivate"]) -> _ProtectedViewWindowDeactivateDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookAfterSave"]) -> _WorkbookAfterSaveDecorator: ...
+
+@typing.overload
+def _make_event_handler_decorator(event_name: typing.Literal["WorkbookNewChart"]) -> _WorkbookNewChartDecorator: ...
+
+def _make_event_handler_decorator(event_name):  # type: (str) -> _Decorator
+    """Returns a decorator for registering event handler."""
+    def event_handler_decorator(func=None, filter=None, com_package=None):
+        if func is None:
+            return xl_event(event_name, filter=filter, com_package=com_package)
+        return xl_event(event_name, filter=filter, com_package=com_package)(func)
+    return event_handler_decorator
+
+class xl_event:
+    """Namespace for Excel event handler decorators.
+
+    For example, the following registers an event handler to be called whenever a new
+    workbook is created::
+
+        @xl_event.new_workbook
+        def on_new_workbook(workbook):
+            pass
+
+    Excel objects are passed as Python COM wrappers, and the package used for the wrappers
+    can be set using the optional 'com_package' keyword argument to the decorator. By
+    default, 'win32com' is used.
+
+    To use 'comtypes' instead of 'win32com' use ``com_package="comtypes", for example::
+
+        @xl_event.new_workbook(com_package="comtypes")
+        def on_new_workbook(workbook):
+            # 'workbook' is a comtypes Python COM wrapper object
+            pass
+
+    An xl_event instance can also be used as a decorator directly. For example, the below
+    is equivalent to the above example::
+
+        @xl_event("NewWorkbook")
+        def on_new_workbook(workbook):
+            pass
+    """
+
+    def __init__(self, event_name, filter=None, com_package=None):
+        """Don't use directly, use one of the class attributes instead."""
+        self.__event_name = event_name
+        self.__filter = filter
+        self.__com_package = com_package
+
+    def __call__(self, func):  # type: (_Function) -> _Function
+        """Called as a decorator the function to be registered as the event handler."""
+        # Add the filter decorator to the event handler function as a new function attribute.
+        def make_filter_decorator(event_handler):
+            def filter_decorator(func):
+                event_handler.__pyxll_event_filter__ = func
+                return func
+            return filter_decorator
+        func.filter = make_filter_decorator(func)  # type: ignore
+
+        # The event handler doesn't get registered when not running in Excel.
+        return func
+
+    new_workbook = _make_event_handler_decorator("NewWorkbook")
+    sheet_selection_change = _make_event_handler_decorator("SheetSelectionChange")
+    sheet_before_double_click = _make_event_handler_decorator("SheetBeforeDoubleClick")
+    sheet_before_right_click = _make_event_handler_decorator("SheetBeforeRightClick")
+    sheet_activate = _make_event_handler_decorator("SheetActivate")
+    sheet_deactivate = _make_event_handler_decorator("SheetDeactivate")
+    sheet_calculate = _make_event_handler_decorator("SheetCalculate")
+    sheet_change = _make_event_handler_decorator("SheetChange")
+    workbook_open = _make_event_handler_decorator("WorkbookOpen")
+    workbook_activate = _make_event_handler_decorator("WorkbookActivate")
+    workbook_deactivate = _make_event_handler_decorator("WorkbookDeactivate")
+    workbook_before_close = _make_event_handler_decorator("WorkbookBeforeClose")
+    workbook_before_save = _make_event_handler_decorator("WorkbookBeforeSave")
+    workbook_before_print = _make_event_handler_decorator("WorkbookBeforePrint")
+    workbook_new_sheet = _make_event_handler_decorator("WorkbookNewSheet")
+    workbook_addin_install = _make_event_handler_decorator("WorkbookAddinInstall")
+    workbook_addin_uninstall = _make_event_handler_decorator("WorkbookAddinUninstall")
+    window_resize = _make_event_handler_decorator("WindowResize")
+    window_activate = _make_event_handler_decorator("WindowActivate")
+    window_deactivate = _make_event_handler_decorator("WindowDeactivate")
+    sheet_follow_hyperlink = _make_event_handler_decorator("SheetFollowHyperlink")
+    sheet_pivot_table_update = _make_event_handler_decorator("SheetPivotTableUpdate")
+    workbook_pivot_table_close_connection = _make_event_handler_decorator("WorkbookPivotTableCloseConnection")
+    workbook_pivot_table_open_connection = _make_event_handler_decorator("WorkbookPivotTableOpenConnection")
+    workbook_sync = _make_event_handler_decorator("WorkbookSync")
+    workbook_before_xml_import = _make_event_handler_decorator("WorkbookBeforeXmlImport")
+    workbook_after_xml_import = _make_event_handler_decorator("WorkbookAfterXmlImport")
+    workbook_before_xml_export = _make_event_handler_decorator("WorkbookBeforeXmlExport")
+    workbook_after_xml_export = _make_event_handler_decorator("WorkbookAfterXmlExport")
+    workbook_rowset_complete = _make_event_handler_decorator("WorkbookRowsetComplete")
+    after_calculate = _make_event_handler_decorator("AfterCalculate")
+    sheet_pivot_table_after_value_change = _make_event_handler_decorator("SheetPivotTableAfterValueChange")
+    sheet_pivot_table_before_allocate_changes = _make_event_handler_decorator("SheetPivotTableBeforeAllocateChanges")
+    sheet_pivot_table_before_commit_changes = _make_event_handler_decorator("SheetPivotTableBeforeCommitChanges")
+    sheet_pivot_table_before_discard_changes = _make_event_handler_decorator("SheetPivotTableBeforeDiscardChanges")
+    protected_view_window_open = _make_event_handler_decorator("ProtectedViewWindowOpen")
+    protected_view_window_before_edit = _make_event_handler_decorator("ProtectedViewWindowBeforeEdit")
+    protected_view_window_before_close = _make_event_handler_decorator("ProtectedViewWindowBeforeClose")
+    protected_view_window_resize = _make_event_handler_decorator("ProtectedViewWindowResize")
+    protected_view_window_activate = _make_event_handler_decorator("ProtectedViewWindowActivate")
+    protected_view_window_deactivate = _make_event_handler_decorator("ProtectedViewWindowDeactivate")
+    workbook_after_save = _make_event_handler_decorator("WorkbookAfterSave")
+    workbook_new_chart = _make_event_handler_decorator("WorkbookNewChart")

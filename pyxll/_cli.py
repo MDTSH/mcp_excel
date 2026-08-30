@@ -22,7 +22,8 @@ from ._utils import (
     _input,
     _set_non_interactive,
     _is_non_interactive,
-    _set_forced
+    _set_forced,
+    _set_user
 )
 import logging
 import sys
@@ -31,8 +32,8 @@ _log = logging.getLogger(__name__)
 
 def print_help(msg=None):
     if msg:
-        print((">>>> " + msg + """ <<<<
-"""))
+        _print(">>>> " + msg + """ <<<<
+""")
 
     _print("""PyXLL command line utility.
 
@@ -46,9 +47,10 @@ Available commands:
     - status
  
 General options:
-    --debug or -d to enable debug logging
-    --non-interactive or -ni to not prompt the user for input
-    --force to force changes to Excel options even if Excel is running
+    --debug or -d : enable debug logging
+    --non-interactive or -ni : don't prompt the user for input
+    --force : force changes to Excel options even if Excel is running
+    --user <name> : update registry settings of a specific user instead of the current user
  
 Example usage:
 >> pyxll install
@@ -63,7 +65,10 @@ def main():
 
     args = []
     log_level = logging.INFO
-    for arg in sys.argv[1:]:
+    user = None
+    sys_args = sys.argv[1:]
+    while sys_args:
+        arg = sys_args.pop(0)
         if arg == "--debug" or arg == "-d":
             log_level = logging.DEBUG
             continue
@@ -72,6 +77,12 @@ def main():
             continue
         if arg == "--force" or arg == "-f":
             _set_forced(True)
+            continue
+        if arg == "--user":
+            if not sys_args:
+                _print("No user specified.")
+                sys.exit(1)
+            user = sys_args.pop(0)
             continue
         args.append(arg)
 
@@ -107,6 +118,9 @@ def main():
                 sys.exit(1)
 
     try:
+        if user is not None:
+            _set_user(user)
+
         cmd = args[0]
         if cmd == "install":
             from . import _install
@@ -149,7 +163,9 @@ def main():
     except Error:
         exc_type, exc_value, exc_tb = sys.exc_info()
         _print(("\nERROR: " + str(exc_value).strip() +
-                "\n\nIf you need additional help please contact support@pyxll.com"))
+                "\n\n" +
+                ("For more detailed logging use the --debug switch.\n\n" if log_level != logging.DEBUG else "") +
+                "If you need additional help please contact support@pyxll.com"))
         return 1
     except Help:
         exc_type, exc_value, exc_tb = sys.exc_info()

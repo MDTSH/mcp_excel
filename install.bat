@@ -7,8 +7,11 @@ set "PYTHONUTF8=1"
 
 where py >nul 2>&1
 if !errorlevel! == 0 (
-    py -3 "%~dp0install_mcp_excel.py" %*
-    exit /b !errorlevel!
+    py -3 -c "import sys" >nul 2>&1
+    if !errorlevel! == 0 (
+        py -3 "%~dp0install_mcp_excel.py" %*
+        exit /b !errorlevel!
+    )
 )
 
 where python >nul 2>&1

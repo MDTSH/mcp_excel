@@ -1,7 +1,5 @@
 # MCPx (Mathema Calculation Plus) - FICC Derivatives Pricing Library
 
-**[English](README.md)** | **[中文](README.zh-CN.md)**
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9–3.13](https://img.shields.io/badge/python-3.9--3.13-blue.svg)](https://www.python.org/downloads/)
 [![PyXLL](https://img.shields.io/badge/PyXLL-Required-orange.svg)](https://www.pyxll.com/)
@@ -125,7 +123,7 @@ Use the same Python you selected for Excel:
 python test_install.py
 ```
 
-The installer scans **64-bit CPython 3.9–3.13**, writes `lib\X64\pyxll.cfg`, and registers `pyxll.xll`. It does **not** set `PYTHONPATH`. 32-bit Excel is not supported.
+The installer scans **64-bit CPython 3.9–3.13**, copies the matching `lib\X64\pyxll\py3xx\pyxll.xll` over `lib\X64\pyxll.xll`, writes `lib\X64\pyxll.cfg`, and registers the add-in. It does **not** set `PYTHONPATH`. 32-bit Excel is not supported. This package ships PyXLL **5.12.4** (one 64-bit xll per Python 3.9–3.13).
 
 **📖 Detailed Installation Guide:** [INSTALLATION.md](INSTALLATION.md) · [Scripts](INSTALL_SCRIPTS_README.md)
 
@@ -247,6 +245,7 @@ print(f"3M Forward Points: {points:.1f}")
 mcp_excel/
 ├── mcp/                          # Core MCP library
 ├── lib/X64/                      # Tagged _mcp.cp3xx pyds, CUDA runtime, pyxll.xll
+│   └── pyxll/py39 … py313/       # PyXLL 5.12.4 add-in per CPython ABI
 ├── example/
 ├── pyxll_func/                   # Excel UDFs
 └── excel/                        # Templates TC01–TC46

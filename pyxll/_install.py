@@ -14,8 +14,10 @@ from ._utils import (
     _print,
     _input,
     _find_and_check_excel,
+    _check_can_read_excel_options,
     _get_dll_bitness,
     _get_exe_bitness,
+    _get_set_user,
     _check_excel_is_not_running,
     _check_python_exe,
     _find_pyxll_addin,
@@ -53,17 +55,16 @@ def install(*args):
     args = list(args)
     while args:
         arg = args.pop(0)
-        value = None
-        if "=" in arg:
-            arg, value = arg.split("=", 1)
-        value = value[0].strip("\'\"") if value else None
-        if arg == "--version":
-            if not value and args and not args[0].startswith("-"):
-                value = args.pop(0)
+        if arg == "--version" or arg.startswith("--version="):
+            value = None
+            if "=" in arg:
+                value = arg.split("=", 1)[1].strip("\'\"")
+            elif args and not args[0].startswith("-"):
+                value = args.pop(0).strip("\'\"")
             if not value:
                 raise Help("No version specified with --version option")
             pyxll_version = value
-        if arg == "--install-first" or arg == "-if":
+        elif arg == "--install-first" or arg == "-if":
             install_first = True
         else:
             unexpected_args.append(arg)
@@ -79,6 +80,9 @@ def install(*args):
     if unexpected_args:
         raise Help("Unexpected arguments '%s' to command 'install'." % ", ".join(unexpected_args))
 
+    if pyxll_version:
+        _log.debug("PyXLL version %s requested" % pyxll_version)
+
     _check_python_exe()
     _check_excel_is_not_running()
 
@@ -86,6 +90,14 @@ def install(*args):
     excel_exe, excel_bits, xl_version_info = _find_and_check_excel()
     xl_version, root_hkey, subkey, flags = xl_version_info
     python_bits = _get_exe_bitness(sys.executable)
+
+    if not _check_can_read_excel_options(root_hkey, subkey, flags):
+        user = _get_set_user()
+        if user is None:
+            raise Error("Excel doesn't appear to be installed for the current user.\n"
+                        "Check Excel is installed correctly and try again.")
+        raise Error(("Excel doesn't appear to be installed for the user '%s'.\n"
+                     "Check Excel is installed correctly and try again.") % user)
 
     # See if PyXLL is already installed
     existing_pyxll_path = _find_pyxll_addin(root_hkey, subkey, flags)

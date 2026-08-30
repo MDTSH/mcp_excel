@@ -24,7 +24,7 @@ import os
 if sys.version_info[0] > 2:
     from configparser import RawConfigParser
 else:
-    from configparser import RawConfigParser
+    from ConfigParser import RawConfigParser
 
 _log = logging.getLogger(__name__)
 
@@ -237,5 +237,5 @@ def check(*args):
         "If you need additional help please contact support@pyxll.com."
     ]
 
-    print(("".join(message)))
+    print("".join(message))
     return 0

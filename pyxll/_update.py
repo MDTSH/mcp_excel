@@ -48,13 +48,12 @@ def update(*args):
     args = list(args)
     while args:
         arg = args.pop(0)
-        value = None
-        if "=" in arg:
-            arg, value = arg.split("=", 1)
-        value = value[0].strip("\'\"") if value else None
-        if arg == "--version":
-            if not value and args and not args[0].startswith("-"):
-                value = args.pop(0)
+        if arg == "--version" or arg.startswith("--version="):
+            value = None
+            if "=" in arg:
+                value = arg.split("=", 1)[1].strip("\'\"")
+            elif args and not args[0].startswith("-"):
+                value = args.pop(0).strip("\'\"")
             if not value:
                 raise Help("No version specified with --version option")
             pyxll_version = value
@@ -71,6 +70,9 @@ def update(*args):
 
     if unexpected_args:
         raise Help("Unexpected arguments '%s' to command 'update'." % ", ".join(unexpected_args))
+
+    if pyxll_version:
+        _log.debug("PyXLL version %s requested" % pyxll_version)
 
     _check_python_exe()
     _check_excel_is_not_running()

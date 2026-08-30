@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import filecmp
 import json
 import os
 import re
@@ -73,6 +74,11 @@ STRINGS = {
         "cfg_bak": "已备份配置: {bak}",
         "cfg_exe": "已写入 executable = {exe}",
         "cfg_fail": "写入 pyxll.cfg 失败: {err}",
+        "xll_ok": "pyxll.xll 已匹配 Python {ver}（{tag}）",
+        "xll_swapped": "已将 pyxll.xll 切换为 Python {ver}（{tag}）",
+        "xll_legacy": "未找到按版本分的 xll，沿用现有 lib\\X64\\pyxll.xll",
+        "xll_missing": "缺少 {path}。请换已带该 ABI 的 Python，或补齐 lib\\X64\\pyxll\\{tag}\\pyxll.xll",
+        "xll_fail": "写入 pyxll.xll 失败: {err}",
         "lic_title": "—— PyXLL 许可 ——",
         "lic_note": "MCP 引擎可按项目许可使用；Excel 加载项依赖 PyXLL，需单独向 https://www.pyxll.com/ 购买或申请试用。\n本安装包不附带可用的 PyXLL 许可。密钥只写入本机 pyxll.cfg，不会上传。",
         "lic_have": "已检测到许可（末四位 {tail}），将保留。",
@@ -130,6 +136,11 @@ STRINGS = {
         "cfg_bak": "Config backup: {bak}",
         "cfg_exe": "Wrote executable = {exe}",
         "cfg_fail": "Failed to update pyxll.cfg: {err}",
+        "xll_ok": "pyxll.xll already matches Python {ver} ({tag})",
+        "xll_swapped": "Switched pyxll.xll to Python {ver} ({tag})",
+        "xll_legacy": "No per-ABI xll folder; keeping lib\\X64\\pyxll.xll",
+        "xll_missing": "Missing {path}. Pick a Python that has a shipped xll, or add lib\\X64\\pyxll\\{tag}\\pyxll.xll",
+        "xll_fail": "Failed to write pyxll.xll: {err}",
         "lic_title": "—— PyXLL license ——",
         "lic_note": "The MCP engine follows this product’s license. The Excel add-in needs a separate PyXLL license from https://www.pyxll.com/ (purchase or trial).\nThis zip does not include a working PyXLL key. The key is written only to local pyxll.cfg.",
         "lic_have": "Existing license kept (ends with {tail}).",
@@ -268,6 +279,56 @@ def shipped_abi_tags(lib_dir: Path) -> List[str]:
 def abi_available(lib_dir: Path, major: int, minor: int) -> bool:
     tag = f"cp{major}{minor}"
     return (lib_dir / f"_mcp.{tag}-win_amd64.pyd").exists()
+
+
+def py_tag(major: int, minor: int) -> str:
+    return f"py{major}{minor}"
+
+
+def shipped_xll_tags(lib_dir: Path) -> List[str]:
+    root = lib_dir / "pyxll"
+    if not root.is_dir():
+        return []
+    tags = []
+    for p in root.iterdir():
+        if p.is_dir() and (p / "pyxll.xll").is_file() and re.match(r"^py\d{2,3}$", p.name, re.I):
+            tags.append(p.name.lower())
+    return tags
+
+
+def xll_stock_path(lib_dir: Path, tag: str) -> Path:
+    return lib_dir / "pyxll" / tag / "pyxll.xll"
+
+
+def xll_available(lib_dir: Path, major: int, minor: int) -> bool:
+    tags = shipped_xll_tags(lib_dir)
+    if not tags:
+        return (lib_dir / "pyxll.xll").is_file()
+    return xll_stock_path(lib_dir, py_tag(major, minor)).is_file()
+
+
+def apply_matching_xll(lib_dir: Path, major: int, minor: int, ui: "I18n", log: "Logger") -> bool:
+    tag = py_tag(major, minor)
+    ver = f"{major}.{minor}"
+    dest = lib_dir / "pyxll.xll"
+    stock = xll_stock_path(lib_dir, tag)
+    tags = shipped_xll_tags(lib_dir)
+    if not stock.is_file():
+        if dest.is_file() and not tags:
+            say(ui, "xll_legacy", log)
+            return True
+        say(ui, "xll_missing", log, path=str(stock), tag=tag)
+        return False
+    if dest.is_file() and filecmp.cmp(stock, dest, shallow=False):
+        say(ui, "xll_ok", log, ver=ver, tag=tag)
+        return True
+    try:
+        shutil.copy2(stock, dest)
+    except OSError as exc:
+        say(ui, "xll_fail", log, err=str(exc))
+        return False
+    say(ui, "xll_swapped", log, ver=ver, tag=tag)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -529,6 +590,8 @@ def evaluate(exe: str, lib_dir: Path, cfg_exe: Optional[str]) -> Optional[Candid
     if ver[0] != 3 or ver[1] not in SUPPORTED_MINOR:
         return None
     if not abi_available(lib_dir, ver[0], ver[1]):
+        return None
+    if not xll_available(lib_dir, ver[0], ver[1]):
         return None
     deps = info.get("deps") or {}
     missing = [k for k in REQUIRED_IMPORTS if not deps.get(k, {}).get("ok")]
@@ -1057,6 +1120,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 again = evaluate(chosen.exe, lib_dir, cfg_exe)
                 if again:
                     chosen = again
+
+    if not apply_matching_xll(lib_dir, chosen.version[0], chosen.version[1], ui, logger):
+        if not auto:
+            ask(ui.t("press"), "")
+        return 1
 
     cfg = ensure_cfg(root, lib_dir, ui, logger)
     if not cfg.exists():

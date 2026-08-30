@@ -125,7 +125,7 @@ install.bat
 python test_install.py
 ```
 
-安装程序会扫描 **64 位 CPython 3.9–3.13**，写入 `lib\X64\pyxll.cfg`，并注册 `pyxll.xll`。**不会**设置用户级 `PYTHONPATH`。不支持 32 位 Excel。
+安装程序会扫描 **64 位 CPython 3.9–3.13**，把匹配的 `lib\X64\pyxll\py3xx\pyxll.xll` 拷到 `lib\X64\pyxll.xll`，再写 `lib\X64\pyxll.cfg` 并注册加载项。**不会**设置用户级 `PYTHONPATH`。不支持 32 位 Excel。本包随带 PyXLL **5.12.4**（3.9–3.13 各一份 64 位 xll）。
 
 **📖 详细安装说明：** [INSTALLATION.md](INSTALLATION.md) · [安装脚本](INSTALL_SCRIPTS_README.md)
 
@@ -256,6 +256,7 @@ python example\market_data\rawmd_demo.py
 mcp_excel/
 ├── mcp/                          # MCP 核心库
 ├── lib/X64/                      # 按 ABI 标记的 _mcp.cp3xx pyd、CUDA 运行时、pyxll.xll
+│   └── pyxll/py39 … py313/       # PyXLL 5.12.4，每个 CPython ABI 一份
 ├── example/                      # Python 示例（含 market_data）
 ├── pyxll_func/                   # Excel UDF
 └── excel/                        # 模板 TC01–TC46

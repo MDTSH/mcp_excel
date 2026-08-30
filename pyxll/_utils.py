@@ -24,7 +24,7 @@ import os
 try:
     import winreg
 except ImportError:
-    import winreg as winreg  # type: ignore
+    import _winreg as winreg  # type: ignore
 
 try:
     from prompt_toolkit import prompt  # type: ignore
@@ -34,23 +34,21 @@ try:
 except ImportError:
     have_prompt_toolkit = False
 
-if sys.version_info[0] >= 3:
-    from urllib.request import urlopen, Request  # type: ignore
-    from urllib.error import URLError  # type: ignore
-    from urllib.parse import quote  # type: ignore
-    from configparser import RawConfigParser  # type: ignore
-else:
-    from urllib.request import urlopen, Request
-    from urllib.error import URLError  # type: ignore
-    from urllib.parse import quote  # type: ignore
-    from configparser import RawConfigParser  # type: ignore
+from urllib.request import urlopen, Request  # type: ignore
+from urllib.error import URLError  # type: ignore
+from urllib.parse import quote  # type: ignore
+from configparser import RawConfigParser  # type: ignore
 
 _log = logging.getLogger(__name__)
 
-_root_keys = {
-    winreg.HKEY_CURRENT_USER: "HKEY_CURRENT_USER",
-    winreg.HKEY_LOCAL_MACHINE: "HKEY_LOCAL_MACHINE",
-}
+# Set by _set_user
+_user_sid = None
+_user_name = None
+
+_root_keys = (
+    winreg.HKEY_CURRENT_USER,
+    winreg.HKEY_LOCAL_MACHINE,
+)
 
 _wow64_flags = {
     "32bit": winreg.KEY_WOW64_32KEY,
@@ -94,6 +92,25 @@ _typelibs = {
 _http_headers = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.47 Safari/537.36'
 }
+
+def _OpenKey(key, sub_key, reserved, flags):
+    """Wrapper of winreg.OpenKey that returns a different key if set_user has been called."""
+    if _user_sid is None:
+        return winreg.OpenKey(key, sub_key, reserved, flags)
+
+    if key == winreg.HKEY_LOCAL_MACHINE:
+        return winreg.OpenKey(key, sub_key, reserved, flags)
+
+    if key == winreg.HKEY_CURRENT_USER:
+        return winreg.OpenKey(winreg.HKEY_USERS, _user_sid + "\\" + sub_key, reserved, flags)
+
+    if key == winreg.HKEY_CLASSES_ROOT:
+        try:
+            return winreg.OpenKey(winreg.HKEY_USERS, _user_sid + "\\Software\\Classes\\" + sub_key, reserved, flags)
+        except WindowsError:
+            return winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, _user_sid + "\\Software\\Classes\\" + sub_key, reserved, flags)
+
+    return winreg.OpenKey(key, sub_key, reserved, flags)
 
 class AutoDeleteFile:
     def __init__(self, path):
@@ -198,7 +215,7 @@ def _input(msg, is_path=False, line_limit=79, default=None):
         msg = lines[-1]
 
     if _non_interactive:
-        print(msg)
+        _print(msg)
         raise Error("Input required. Cannot run in non-interactive mode.")
 
     result = None
@@ -212,13 +229,7 @@ def _input(msg, is_path=False, line_limit=79, default=None):
             pass
 
     if result is None:
-        try:
-            result = input(msg)
-        except NameError:
-            pass
-
-    if result is None:
-        result = eval(input(msg))
+        result = input(msg)
 
     if is_path:
         # Strip matching start and end quotes only
@@ -235,89 +246,87 @@ def _find_excel_path():
     if python_bits in wow64_keys and wow64_keys[0] != python_bits:
         wow64_keys.reverse()
 
-    for wow64_key in wow64_keys:
-        # Check for Excel InstallRoot first
-        for root in _root_keys:
+    for root in _root_keys:
+        for wow64_key in wow64_keys:
+            wow64_flags = _wow64_flags[wow64_key]
+            flags = wow64_flags | winreg.KEY_READ
+
+            # Check for Excel InstallRoot first
             key = None
             try:
                 try:
-                    wow64_flags = _wow64_flags[wow64_key]
-                    flags = wow64_flags | winreg.KEY_READ
-                    key = winreg.OpenKey(root, r"SOFTWARE\Microsoft\Office", 0, flags)
+                    key = _OpenKey(root, r"SOFTWARE\Microsoft\Office", 0, flags)
                 except WindowsError:
-                    continue
+                    pass
 
-                xl_versions = []
-                i = 0
-                while True:
-                    try:
-                        value = winreg.EnumKey(key, i)
-                        if re.match(r"^\d+\.\d+$", value):
-                            xl_versions.append(value)
-                        i += 1
-                    except IOError:
-                        break
+                if key is not None:
+                    xl_versions = []
+                    i = 0
+                    while True:
+                        try:
+                            value = winreg.EnumKey(key, i)
+                            if re.match(r"^\d+\.\d+$", value):
+                                xl_versions.append(value)
+                            i += 1
+                        except IOError:
+                            break
 
-                xl_versions.sort(reverse=True, key=lambda x: float(x))
-                for xl_version in xl_versions:
-                    subkey = None
-                    try:
-                        subkey = winreg.OpenKey(key, r"%s\Excel\InstallRoot" % xl_version, 0, flags)
-                        excel_folder = winreg.QueryValueEx(subkey, "Path")[0]
-                        path = os.path.join(excel_folder, "EXCEL.EXE")
-                        if os.path.exists(path):
-                            return path
-                    except WindowsError:
-                        continue
-                    finally:
-                        if subkey is not None:
-                            winreg.CloseKey(subkey)
-                else:
-                    continue
+                    xl_versions.sort(reverse=True, key=lambda x: float(x))
+                    for xl_version in xl_versions:
+                        subkey = None
+                        try:
+                            subkey = _OpenKey(key, r"%s\Excel\InstallRoot" % xl_version, 0, flags)
+                            excel_folder = winreg.QueryValueEx(subkey, "Path")[0]
+                            path = os.path.join(excel_folder, "EXCEL.EXE")
+                            if os.path.exists(path):
+                                return path
+                        except WindowsError:
+                            continue
+                        finally:
+                            if subkey is not None:
+                                winreg.CloseKey(subkey)
             finally:
                 if key is not None:
                     winreg.CloseKey(key)
 
-        # Next look in CurrentVersion
-        for root in _root_keys:
+            # Next look in CurrentVersion
+            key = None
             try:
-                wow64_flags = _wow64_flags[wow64_key]
-                flags = wow64_flags | winreg.KEY_READ
-                key = winreg.OpenKey(root, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe", 0, flags)
+                key = _OpenKey(root, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe", 0, flags)
             except WindowsError:
-                continue
+                pass
 
-            value = winreg.QueryValue(key, None)
-            winreg.CloseKey(key)
-
-            if os.path.exists(value):
-                return value
-
-        # If we've not found anything in CurrentVersion then check the Excel file associations
-        for ext in (".xlsx", ".xlsm", ".xlsb", ".xls"):
-            try:
-                wow64_flags = _wow64_flags[wow64_key]
-                flags = wow64_flags | winreg.KEY_READ
-
-                # Get the program name from the extension
-                key = winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, ext, 0, flags)
-                name = winreg.QueryValue(key, None)
+            if key is not None:
+                value = winreg.QueryValue(key, None)
                 winreg.CloseKey(key)
 
-                # Find the shell command from the program name
-                key = winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, name + r"\shell\Open\command", 0, flags)
-                cmd = winreg.QueryValue(key, None)
-                winreg.CloseKey(key)
-            except WindowsError:
-                continue
+                if os.path.exists(value):
+                    return value
 
-            # Try parsing the command to get the executable path
-            _log.debug("Found file association '%s' for %s" % (cmd, ext))
-            args = shlex.split(cmd, posix=False)
-            if args and args[0]:
-                path = args[0].strip("\"'")
-                if os.path.exists(path):
-                    return path
+            # If we've not found anything in CurrentVersion then check the Excel file associations
+            for ext in (".xlsx", ".xlsm", ".xlsb", ".xls"):
+                cmd = None
+                try:
+                    # Get the program name from the extension
+                    key = _OpenKey(root, "Software\\Classes\\" + ext, 0, flags)
+                    name = winreg.QueryValue(key, None)
+                    winreg.CloseKey(key)
+
+                    # Find the shell command from the program name
+                    key = _OpenKey(root, "Software\\Classes\\" + name + r"\shell\Open\command", 0, flags)
+                    cmd = winreg.QueryValue(key, None)
+                    winreg.CloseKey(key)
+                except WindowsError:
+                    pass
+
+                if cmd is not None:
+                    # Try parsing the command to get the executable path
+                    _log.debug("Found file association '%s' for %s" % (cmd, ext))
+                    args = shlex.split(cmd, posix=False)
+                    if args and args[0]:
+                        path = args[0].strip("\"'")
+                        if os.path.exists(path):
+                            return path
 
 def _guess_exe_bitness_from_path(exe_path):
     # Check to see if the exe is in the WindowsApps folder
@@ -458,7 +467,7 @@ def _find_excel_version_info(bits):
     flags = _wow64_flags[bits] | winreg.KEY_READ
     for root in _root_keys:
         try:
-            office_root = winreg.OpenKey(root, office_subkey, 0, flags)
+            office_root = _OpenKey(root, office_subkey, 0, flags)
         except WindowsError:
             continue
 
@@ -477,7 +486,7 @@ def _find_excel_version_info(bits):
                 # Check Excel is installed
                 try:
                     excel_subkey = subkey + r"\Excel"
-                    excel_root = winreg.OpenKey(office_root, subkey + r"\Excel", 0, flags)
+                    excel_root = _OpenKey(office_root, subkey + r"\Excel", 0, flags)
                 except WindowsError:
                     continue
 
@@ -492,6 +501,15 @@ def _find_excel_version_info(bits):
         winreg.CloseKey(office_root)
 
     return max_office_version
+
+def _check_can_read_excel_options(root, excel_key, flags):
+    """Return True if Excel 'Options' sub key exists."""
+    try:
+        options_key = _OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_READ)
+        winreg.CloseKey(options_key)
+        return True
+    except WindowsError:
+        return False
 
 def _find_pyxll_addin(root=None, excel_key=None, flags=None):
     """Finds the PyXLL addin installed in the registry.
@@ -521,7 +539,7 @@ def _find_pyxll_addin(root=None, excel_key=None, flags=None):
         raise ValueError("Missing value for 'flags'")
 
     try:
-        options_key = winreg.OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_READ)
+        options_key = _OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_READ)
     except WindowsError:
         _log.error("Error accessing Excel options in the registry.")
         return None
@@ -552,7 +570,7 @@ def _renumber_excel_options(root, excel_key, flags, first_key=None, dry_run=Fals
     The key must be opened for read and write.
     """
     try:
-        options_key = winreg.OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_READ)
+        options_key = _OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_READ)
     except WindowsError:
         raise Error("Couldn't read the Excel options in the registry to renumber the OPEN keys.")
 
@@ -578,7 +596,7 @@ def _renumber_excel_options(root, excel_key, flags, first_key=None, dry_run=Fals
 
         return int(match.group(1) or 0)
 
-    ordered_keys = list(sorted(list(open_values.keys()), key=key_order))
+    ordered_keys = list(sorted(open_values.keys(), key=key_order))
 
     # Check if they're already in the correct order
     expected = ["OPEN" + (str(i) if i > 0 else "") for i in range(len(open_values))]
@@ -592,7 +610,7 @@ def _renumber_excel_options(root, excel_key, flags, first_key=None, dry_run=Fals
 
     _log.debug("Re-numbering Excel's OPEN options")
     try:
-        options_key = winreg.OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_WRITE)
+        options_key = _OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_WRITE)
 
         new_values = {}
         for i, key in enumerate(ordered_keys):
@@ -601,7 +619,7 @@ def _renumber_excel_options(root, excel_key, flags, first_key=None, dry_run=Fals
             winreg.SetValueEx(options_key, new_key, 0, winreg.REG_SZ, value)
             new_values[new_key] = value
 
-        for key in list(open_values.keys()):
+        for key in open_values.keys():
             if key not in new_values:
                 winreg.DeleteValue(options_key, key)
 
@@ -616,7 +634,7 @@ def _uninstall_pyxll_addin(root, excel_key, flags, xll_path, dry_run=False):
     # uninstall entries from \Software\Microsoft\Office\<version>\Excel\Options
     # (this is what Excel uses to determine what to load on start-up)
     try:
-        options_key = winreg.OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_READ)
+        options_key = _OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_READ)
     except WindowsError:
         raise Error("Couldn't read the Excel options in the registry.")
 
@@ -642,7 +660,7 @@ def _uninstall_pyxll_addin(root, excel_key, flags, xll_path, dry_run=False):
     # Delete the keys found
     try:
         _log.debug("Found PyXLL add-in in Excel's Options")
-        options_key = winreg.OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_WRITE)
+        options_key = _OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_WRITE)
         for name, data in to_delete:
             if dry_run:
                 _log.info("[DRY-RUN] Not deleting Options key %s=%s" % (name, data))
@@ -660,7 +678,7 @@ def _uninstall_pyxll_addin(root, excel_key, flags, xll_path, dry_run=False):
     # (this is what Excel uses to list addins in the addin manager)
     addins_key = None
     try:
-        addins_key = winreg.OpenKey(root, excel_key + r"\Add-in Manager", 0, flags | winreg.KEY_READ)
+        addins_key = _OpenKey(root, excel_key + r"\Add-in Manager", 0, flags | winreg.KEY_READ)
     except WindowsError:
         pass
 
@@ -682,7 +700,7 @@ def _uninstall_pyxll_addin(root, excel_key, flags, xll_path, dry_run=False):
         if to_delete:
             _log.debug("Found PyXLL add-in in Excel's 'Add-in Manager'")
             try:
-                addins_key = winreg.OpenKey(root, excel_key + r"\Add-in Manager", 0, flags | winreg.KEY_WRITE)
+                addins_key = _OpenKey(root, excel_key + r"\Add-in Manager", 0, flags | winreg.KEY_WRITE)
                 for name, data in to_delete:
                     if dry_run:
                         _log.info("[DRY-RUN] Not deleting Add-in Manager key %s")
@@ -697,7 +715,7 @@ def _uninstall_pyxll_addin(root, excel_key, flags, xll_path, dry_run=False):
     # (this is what Excel uses to list blacklist badly behaving addins)
     disabled_key = None
     try:
-        disabled_key = winreg.OpenKey(root, excel_key + r"\Resiliency\DisabledItems", 0, flags | winreg.KEY_READ)
+        disabled_key = _OpenKey(root, excel_key + r"\Resiliency\DisabledItems", 0, flags | winreg.KEY_READ)
     except WindowsError:
         pass
 
@@ -720,7 +738,7 @@ def _uninstall_pyxll_addin(root, excel_key, flags, xll_path, dry_run=False):
         if to_delete:
             _log.debug("Found PyXLL in Excel's disabled addins")
             try:
-                disabled_key = winreg.OpenKey(root, excel_key + r"\Resiliency\DisabledItems", 0, flags | winreg.KEY_WRITE)
+                disabled_key = _OpenKey(root, excel_key + r"\Resiliency\DisabledItems", 0, flags | winreg.KEY_WRITE)
                 for name in to_delete:
                     if dry_run:
                         _log.info("[DRY-RUN] Not deleting DisabledItems key %s" % name)
@@ -741,7 +759,7 @@ def _uninstall_registered_com_comonents(dry_run=False):
     def _deleteAllSubKeys(key, flags):
         assert key.strip()
         try:
-            hkey = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key, 0, flags | winreg.KEY_READ)
+            hkey = _OpenKey(winreg.HKEY_CURRENT_USER, key, 0, flags | winreg.KEY_READ)
         except WindowsError:
             return False
 
@@ -763,7 +781,7 @@ def _uninstall_registered_com_comonents(dry_run=False):
     def _deleteSubKey(key, subkey, flags=None):
         assert subkey.strip()  # don't accidentally delete the whole key
 
-        all_flags = list(_wow64_flags.values())
+        all_flags = _wow64_flags.values()
         if flags is not None:
             all_flags = [flags]
 
@@ -772,7 +790,7 @@ def _uninstall_registered_com_comonents(dry_run=False):
             if _deleteAllSubKeys("\\".join((key, subkey)), flags):
                 # Then delete the actual key
                 try:
-                    hkey = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key, 0, flags | winreg.KEY_WRITE)
+                    hkey = _OpenKey(winreg.HKEY_CURRENT_USER, key, 0, flags | winreg.KEY_WRITE)
                 except WindowsError:
                     _log.debug("Unable to open registry key '%s' to delete sub key '%s'" % (key, subkey))
                     return
@@ -826,7 +844,7 @@ def _load_config_file(cfg_path):
     if sys.version_info[0] >= 3:
         cfg.read(cfg_path, encoding="utf-8")
     else:
-        from io import StringIO
+        from StringIO import StringIO
         data = StringIO()
         with open(cfg_path, "rb") as fh:
             data.write(fh.read().decode("utf-8"))
@@ -1169,7 +1187,7 @@ def _install_pyxll_addin(xll_path, root, excel_key, flags, install_first=False, 
     # Find existing OPEN entries in \Software\Microsoft\Office\<version>\Excel\Options
     # (this is what Excel uses to determine what to load on start-up)
     try:
-        options_key = winreg.OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_READ)
+        options_key = _OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_READ)
     except WindowsError:
         raise Error("Couldn't read the Excel options in the registry.")
 
@@ -1188,7 +1206,7 @@ def _install_pyxll_addin(xll_path, root, excel_key, flags, install_first=False, 
     winreg.CloseKey(options_key)
 
     try:
-        options_key = winreg.OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_READ | winreg.KEY_WRITE)
+        options_key = _OpenKey(root, excel_key + r"\Options", 0, flags | winreg.KEY_READ | winreg.KEY_WRITE)
     except WindowsError:
         raise Error("Couldn't update the Excel options in the registry, write access denied.")
 
@@ -1255,7 +1273,7 @@ def _configure_pyxll(pyxll_install_path, license_key=None, license_file=None):
                 # If there are any values still left to set then add them now
                 if section_values:
                     added_cfg_lines = []
-                    for key, (value, expected) in list(section_values.items()):
+                    for key, (value, expected) in section_values.items():
                         if value:
                             _log.debug("Adding %s.%s = %s" % (section, key, value))
                             added_cfg_lines.append("%s = %s%s" % (key, value, newline))
@@ -1406,3 +1424,102 @@ def _find_and_check_excel():
     excel_version, hkey_root, excel_subkey, flags = xl_version_info
     _log.debug("Found %s Excel %s installed: %s" % (excel_bits, excel_version, excel_exe))
     return excel_exe, excel_bits, xl_version_info
+
+def _set_user(username):
+    _log.debug("Finding SID for user '%s'" % username)
+
+    def LookupAccountName(lpSystemName, lpAccountName):
+        # BOOL WINAPI LookupAccountName(
+        #   __in_opt   LPCTSTR lpSystemName,
+        #   __in       LPCTSTR lpAccountName,
+        #   __out_opt  PSID Sid,
+        #   __inout    LPDWORD cbSid,
+        #   __out_opt  LPTSTR ReferencedDomainName,
+        #   __inout    LPDWORD cchReferencedDomainName,
+        #   __out      PSID_NAME_USE peUse
+        # );
+        _LookupAccountNameW = ctypes.windll.advapi32.LookupAccountNameW
+        _LookupAccountNameW.argtypes = [
+            ctypes.wintypes.LPCWSTR,
+            ctypes.wintypes.LPCWSTR,
+            ctypes.wintypes.LPVOID,
+            ctypes.wintypes.LPDWORD,
+            ctypes.wintypes.LPWSTR,
+            ctypes.wintypes.LPDWORD,
+            ctypes.wintypes.LPDWORD
+        ]
+        _LookupAccountNameW.restype = ctypes.wintypes.BOOL
+
+        cbSid = ctypes.wintypes.DWORD(0)
+        cchReferencedDomainName = ctypes.wintypes.DWORD(0)
+        peUse = ctypes.wintypes.DWORD(0)
+
+        _LookupAccountNameW(lpSystemName,
+                            lpAccountName,
+                            None,
+                            ctypes.byref(cbSid),
+                            None,
+                            ctypes.byref(cchReferencedDomainName),
+                            ctypes.byref(peUse))
+
+        error = ctypes.windll.kernel32.GetLastError()
+        if error != 122:
+            raise ctypes.WinError(error)
+
+        sid = ctypes.create_unicode_buffer('', cbSid.value)
+        psid = ctypes.cast(ctypes.pointer(sid), ctypes.wintypes.LPVOID)
+        lpReferencedDomainName = ctypes.create_unicode_buffer('', cchReferencedDomainName.value + 1)
+
+        success = _LookupAccountNameW(lpSystemName,
+                                      lpAccountName,
+                                      psid,
+                                      ctypes.byref(cbSid),
+                                      lpReferencedDomainName,
+                                      ctypes.byref(cchReferencedDomainName),
+                                      ctypes.byref(peUse))
+        if not success:
+            error = ctypes.windll.kernel32.GetLastError()
+            raise ctypes.WinError(error)
+
+        return psid, lpReferencedDomainName.value, peUse.value
+
+    def ConvertSidToStringSid(Sid):
+        # BOOL ConvertSidToStringSid(
+        #   __in   PSID Sid,
+        #   __out  LPTSTR *StringSid
+        # );
+        _ConvertSidToStringSidW = ctypes.windll.advapi32.ConvertSidToStringSidW
+        _ConvertSidToStringSidW.argtypes = [
+            ctypes.wintypes.LPVOID,
+            ctypes.POINTER(ctypes.wintypes.LPWSTR)
+        ]
+        _ConvertSidToStringSidW.restype = bool
+
+        pStringSid = ctypes.wintypes.LPWSTR()
+        success = _ConvertSidToStringSidW(Sid, ctypes.byref(pStringSid))
+        if not success:
+            error = ctypes.windll.kernel32.GetLastError()
+            raise ctypes.WinError(error)
+        try:
+            StringSid = pStringSid.value
+        finally:
+            ctypes.windll.kernel32.LocalFree(pStringSid)
+        return StringSid
+
+    try:
+        sid, domain, type = LookupAccountName(None, username)
+        sid = ConvertSidToStringSid(sid)
+    except:
+        _log.debug("Error finding account", exc_info=True)
+        raise Error(("Unable to find SID for user '%s'.\n"
+                     "Check the Windows account exists.") % username)
+
+    _log.debug("Found SID for '%s': %s" % (username, sid))
+
+    global _user_name, _user_sid
+    _user_name = username
+    _user_sid = sid
+
+def _get_set_user():
+    """Returns the user set as a command line arg, or None"""
+    return _user_name
