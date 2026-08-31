@@ -108,7 +108,6 @@ def py_tran(x):
 
 
 from math import log, sqrt, exp
-from scipy.stats import norm
 import math
 
 """
@@ -228,9 +227,9 @@ def black_scholes(S, K, r, q, T, sigma, option_type):
     # Calculate option price based on type
     option_type = option_type.lower()
     if option_type == 'call':
-        option_price = S * exp(-q * T) * norm.cdf(d1) - K * exp(-r * T) * norm.cdf(d2)
+        option_price = S * exp(-q * T) * norm_cdf(d1) - K * exp(-r * T) * norm_cdf(d2)
     elif option_type == 'put':
-        option_price = K * exp(-r * T) * norm.cdf(-d2) - S * exp(-q * T) * norm.cdf(-d1)
+        option_price = K * exp(-r * T) * norm_cdf(-d2) - S * exp(-q * T) * norm_cdf(-d1)
     else:
         raise ValueError("Invalid option type. Must be 'call' or 'put'.")
 

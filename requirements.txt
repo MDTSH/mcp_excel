@@ -16,6 +16,7 @@ python-dateutil>=2.8.0
 # pyxll>=5.0.0  # Uncomment if you have PyXLL license
 
 # Optional packages (uncomment if needed)
+# scipy>=1.7.0       # ImpliedVol / Delta solver in xScript (not required to open Excel)
 # matplotlib>=3.3.0  # For plotting
 # seaborn>=0.11.0    # For advanced plotting
 # jupyter>=1.0.0     # For Jupyter notebooks

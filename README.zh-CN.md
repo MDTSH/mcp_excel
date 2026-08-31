@@ -6,7 +6,7 @@
 [![Python 3.9–3.13](https://img.shields.io/badge/python-3.9--3.13-blue.svg)](https://www.python.org/downloads/)
 [![PyXLL](https://img.shields.io/badge/PyXLL-Required-orange.svg)](https://www.pyxll.com/)
 
-**版本**：v1.6（2026-08-28）· 安装包 `mcp_excel_1.6.20260828.zip` · 内核 `1.6.15103`
+**版本**：v1.6（2026-08-31）· 安装包 `mcp_excel_1.6.20260831.zip` · 内核 `1.6.15103`
 
 面向**固收、外汇与商品（FICC）** 的衍生品定价与风险管理 Python 库。MCP 为金融机构、交易台和量化分析师提供专业工具，并通过 **PyXLL 与 Excel 无缝集成**，可在电子表格中直接搭建复杂金融模型与模板。
 

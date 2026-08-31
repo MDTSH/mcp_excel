@@ -28,7 +28,6 @@ from pyxll import RTD, xl_arg, xl_app, xl_func, xl_return, xlfCaller  # noqa: F4
 # Project Internal Module Imports (alphabetical order, subpackages first)
 # =========================
 import mcp.mcp  # Reserved: may be referenced by Excel side activation
-import mcp.xscript.greeks_diff  # noqa: F401  patch SDP DeltaDiff1Pct / GammaDiff1Pct
 import mcp.xscript.structure as xsst
 import mcp.xscript.utils as xsutils
 from mcp.forward.compound import payoff_generate_spots  # noqa: F401 May be called in other paths

@@ -26,8 +26,7 @@ import mcp.wrapper as mcp_wrapper
 from mcp.xscript.asset import McpAsset, McpAssetFactory
 from mcp.xscript.utils import SttUtils, xss_utils
 from mcp.utils.mcp_utils import *
-
-from scipy.optimize import root_scalar, minimize_scalar
+from mcp.optional_deps import require
 import sys
 
 
@@ -1018,7 +1017,8 @@ class Solver:
         # 将'maxiter'键对应的值转换为整数类型
         options['maxiter'] = int(options['maxiter'])
         # 设置最大迭代次数为 10,初始猜测值为 1.0,区间为 (-100, 100)
-        result = root_scalar(lambda x: self.objFunc_Premium(fields, x, isAnnualized) - premium, x0=x0, bracket=bracket, method=method, options=options)
+        opt = require("scipy", feature="ImpliedVol").optimize
+        result = opt.root_scalar(lambda x: self.objFunc_Premium(fields, x, isAnnualized) - premium, x0=x0, bracket=bracket, method=method, options=options)
         #result = find_root(lambda x: self.objFunc_Premium(fields, x), premium, bracket)
 
         if result.converged:
@@ -1115,19 +1115,20 @@ class Solver:
             return self.objFunc_Delta(fields, x, isCCY2, isAmount) - delta
 
         # --- 5. 分曲线类型求解 ---
+        opt = require("scipy", feature="ImpliedVol").optimize
         # Case 1: V 型曲线（可能多解）
         if curve_type == 'v_shape' or  curve_type == 'rv_shape':
             try:
                 # 5.1 寻找 Delta 的极值点（V 型最低点、RV型最高点）
                 min_result = 0
                 if (curve_type == 'v_shape'):
-                    min_result = minimize_scalar(
+                    min_result = opt.minimize_scalar(
                         lambda x: self.objFunc_Delta(fields, x, isCCY2, isAmount),
                         bounds=bracket,
                         method='bounded'  # 有界优化方法
                     )
                 else:
-                    min_result = minimize_scalar(
+                    min_result = opt.minimize_scalar(
                         lambda x: -self.objFunc_Delta(fields, x, isCCY2, isAmount),
                         bounds=bracket,
                         method='bounded'  # 有界优化方法
@@ -1157,7 +1158,7 @@ class Solver:
                 # 按照优先级顺序搜索子区间
                 for sub_bracket in [priority_bracket, other_bracket]:
                     try:
-                        result = root_scalar(
+                        result = opt.root_scalar(
                             delta_obj_func,
                             bracket=sub_bracket,
                             method=method,
@@ -1182,7 +1183,7 @@ class Solver:
                 x0, x1 = bracket[0], bracket[1]
 
             # 5.2 调用求根器
-            result = root_scalar(
+            result = opt.root_scalar(
                 delta_obj_func,
                 x0=x0,
                 x1=x1,
