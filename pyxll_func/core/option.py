@@ -7,10 +7,12 @@ Provides Excel functions related to options, including:
 - Option price calculation
 - Option Greeks calculation
 - Option volatility calculation
+- Target Redemption Forward (TARF / Pivot TARF)
 """
 
 import json
 import logging
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
 
 from pyxll import xl_func, xl_arg, xl_return
@@ -20,6 +22,7 @@ import mcp.mcp_wrapper
 from mcp.tool.args_def import tool_def
 import mcp.wrapper
 from mcp.mcp import MVanillaOption
+import mcp.mcp as mcp_mod
 import mcp.forward.compound
 from mcp.utils.excel_utils import *
 from mcp.utils.mcp_utils import *
@@ -55,6 +58,30 @@ def McpVanillaOption(args1, args2, args3, args4, args5, fmt='VP'):
     except Exception as e:
         s = f"McpVanillaOption except: {e}"
         logging.warning(args)
+        logging.warning(s, exc_info=True)
+        return s
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("kv_range", "var[][]")
+def McpDigitalOption(kv_range):
+    """数字期权构造函数，等价于 McpEuropeanDigital。支持 KV 范围或 xls_create 格式。"""
+    try:
+        return tool_def.tool_create('McpEuropeanDigital', (kv_range,))
+    except Exception as e:
+        s = f"McpDigitalOption except: {e}"
+        logging.warning(s, exc_info=True)
+        return s
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("kv_range", "var[][]")
+def McpDoubleDigitalOption(kv_range):
+    """双障碍数字期权构造函数，从 KV 范围创建 MDoubleDigitalOption。"""
+    try:
+        return tool_def.tool_create('McpDoubleDigitalOption', (kv_range,))
+    except Exception as e:
+        s = f"McpDoubleDigitalOption except: {e}"
         logging.warning(s, exc_info=True)
         return s
 
@@ -204,6 +231,9 @@ def McpForwardDelta(obj, isCcy2=True, isAmount=True):
 @xl_arg("obj", "object")
 @xl_arg("isAmount", "bool")
 def McpPrice(obj, isAmount=True):
+    tn = type(obj).__name__
+    if tn in ("MTargetRedemptionForward", "MPivotTargetRedemptionForward"):
+        return obj.Price(-1)
     return obj.Price(isAmount)
 
 
@@ -241,7 +271,30 @@ def McpDiscPnL(obj, isAmount=True, tradePrice=0.0):
 @xl_arg("obj", "object")
 @xl_arg("isAmount", "bool")
 def McpPV(obj, isAmount=True):
-    return obj.PV(isAmount)
+    """Excel 端统一 PV 入口，与估值引擎 fx_options_adapter.cpp 中
+    PV = DiscMarketValue(true) 保持语义一致（多头有价值为正）。
+
+    优先调用对象自身的 PV(isAmount)；若该对象/类暂未提供 PV（例如较旧的 SWIG
+    构建中 MVanillaBarriers / MDigitalOption / MDoubleDigitalOption 等没有
+    PV 接口），自动回退到 DiscMarketValue(isAmount)，确保 McpPV 在所有期权
+    类型上立即可用且与跑批口径一致。
+    """
+    r = None
+    pv_attr = getattr(obj, "PV", None)
+    if callable(pv_attr):
+        try:
+            r = pv_attr(isAmount)
+        except (AttributeError, TypeError, NotImplementedError):
+            r = None
+    if r is None:
+        dmv_attr = getattr(obj, "DiscMarketValue", None)
+        if callable(dmv_attr):
+            r = dmv_attr(isAmount)
+        else:
+            raise AttributeError(
+                f"{type(obj).__name__} 既未提供 PV 也未提供 DiscMarketValue，无法计算 McpPV"
+            )
+    return r
 
 
 # @xl_func(macro=False, recalc_on_open=True)
@@ -756,11 +809,29 @@ def ImpliedFwdPoints(pair, baseRate, termRate, spot, spotDate, deliveryDate):
 #         return s
 #
 #
+def _vo_get_market(obj, method_name, attr_fallbacks=()):
+    """VOGet* 共用：支持 Vanilla / Digital / Barrier。
+
+    优先调对象自身的 getter（Vanilla 走 C++，Digital/Barrier 走
+    Python wrapper）；再回退到 wrapper 缓存字段。
+    """
+    fn = getattr(obj, method_name, None)
+    if callable(fn):
+        try:
+            return fn()
+        except (AttributeError, TypeError, NotImplementedError):
+            pass
+    for attr in attr_fallbacks:
+        if hasattr(obj, attr):
+            return getattr(obj, attr)
+    raise AttributeError(f"{type(obj).__name__} 不支持 {method_name}")
+
+
 @xl_func(macro=False, recalc_on_open=True)
 def VOGetSpot(obj):
     args = [obj]
     try:
-        return tool_def.xls_call(*args, key='McpVanillaOption', method='GetSpot')
+        return _vo_get_market(obj, "GetSpot", ("spotPx",))
     except Exception as e:
         s = f"VOGetSpot except: {e}"
         logging.warning(args)
@@ -771,7 +842,7 @@ def VOGetSpot(obj):
 def VOGetForward(obj):
     args = [obj]
     try:
-        return tool_def.xls_call(*args, key='McpVanillaOption', method='GetForward')
+        return _vo_get_market(obj, "GetForward", ("forward",))
     except Exception as e:
         s = f"VOGetForward except: {e}"
         logging.warning(args)
@@ -782,7 +853,7 @@ def VOGetForward(obj):
 def VOGetVol(obj):
     args = [obj]
     try:
-        return tool_def.xls_call(*args, key='McpVanillaOption', method='GetVol')
+        return _vo_get_market(obj, "GetVol", ("volatility",))
     except Exception as e:
         s = f"VOGetVol except: {e}"
         logging.warning(args)
@@ -793,7 +864,7 @@ def VOGetVol(obj):
 def VOGetStrike(obj):
     args = [obj]
     try:
-        return tool_def.xls_call(*args, key='McpVanillaOption', method='GetStrike')
+        return _vo_get_market(obj, "GetStrike", ("strikePx",))
     except Exception as e:
         s = f"VOGetStrike except: {e}"
         logging.warning(args)
@@ -804,7 +875,7 @@ def VOGetStrike(obj):
 def VOGetAccRate(obj):
     args = [obj]
     try:
-        return tool_def.xls_call(*args, key='McpVanillaOption', method='GetAccRate')
+        return _vo_get_market(obj, "GetAccRate", ("accRate",))
     except Exception as e:
         s = f"VOGetAccRate except: {e}"
         logging.warning(args)
@@ -816,11 +887,12 @@ def VOGetAccRate(obj):
 def VOGetUndRate(obj):
     args = [obj]
     try:
-        return tool_def.xls_call(*args, key='McpVanillaOption', method='GetUndRate')
+        return _vo_get_market(obj, "GetUndRate", ("undRate",))
     except Exception as e:
         s = f"VOGetUndRate except: {e}"
         logging.warning(args)
         logging.warning(s, exc_info=True)
+        return s
 
 
 @xl_func(macro=False, recalc_on_open=True)
@@ -1237,6 +1309,324 @@ def McpVanillaBarriers(args1, args2, args3, args4, args5, fmt='VP'):
         return s
 
 
+# =========================
+# Target Redemption Forward (TARF / BONUS_TARF / Pivot TARF)
+# 构造: McpTarf / McpPivotTarf (VP)
+# 估值: McpPrice / McpTarfFixingSchedule
+# Greeks: McpDelta / McpGamma / … (通用函数)
+# =========================
+
+_FX_VOL_TENORS = (
+    "ON", "1W", "2W", "1M", "2M", "3M", "6M", "9M", "1Y", "18M", "2Y", "3Y", "4Y", "5Y"
+)
+
+
+def _tarf_add_months(d, months):
+    y = d.year + (d.month - 1 + months) // 12
+    m = (d.month - 1 + months) % 12 + 1
+    mdays = [31, 29 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0) else 28,
+             31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    return date(y, m, min(d.day, mdays[m - 1]))
+
+
+def _tarf_tenor_date(ref, tenor):
+    t = str(tenor).upper()
+    if t == "ON":
+        return ref + timedelta(days=1)
+    if t == "TN":
+        return ref + timedelta(days=2)
+    if t in ("SW", "1W"):
+        return ref + timedelta(days=7)
+    if t.endswith("W"):
+        return ref + timedelta(days=7 * int(t[:-1]))
+    if t.endswith("M"):
+        return _tarf_add_months(ref, int(t[:-1]))
+    if t.endswith("Y"):
+        return _tarf_add_months(ref, 12 * int(t[:-1]))
+    return ref
+
+
+def _tarf_parse_ref_date(reference_date):
+    if reference_date is None or reference_date == "":
+        return None
+    if isinstance(reference_date, datetime):
+        return reference_date.date()
+    if isinstance(reference_date, date):
+        return reference_date
+    return mcp_dt.parse_date(str(reference_date)).date()
+
+
+def _tarf_build_mvol_surface_from_fx(fx_vol, reference_date, spot):
+    """MVE buildTarfVolSurfaceFromFx 的 Python 等价：FXVolSurface -> VolatilitySurface。"""
+    ref_dt = _tarf_parse_ref_date(reference_date)
+    if ref_dt is None:
+        ref_dt = _tarf_parse_ref_date(fx_vol.GetReferenceDate())
+    spot = float(spot or fx_vol.GetSpot())
+    spot_date = ref_dt + timedelta(days=2)
+
+    expiry_dates = []
+    delivery_dates = []
+    atm_vols = []
+    dom_rates = []
+    for_rates = []
+    for tenor in _FX_VOL_TENORS:
+        try:
+            exp_dt = _tarf_tenor_date(ref_dt, tenor)
+            exp_str = mcp_dt.to_date1(datetime.combine(exp_dt, datetime.min.time()))
+            atm_vols.append(float(fx_vol.GetATMVol(exp_str)) / 100.0)
+            dom_rates.append(float(fx_vol.GetDomesticRate(exp_str, False)))
+            for_rates.append(float(fx_vol.GetForeignRate(exp_str, False)))
+            expiry_dates.append(exp_str)
+            del_dt = exp_dt + timedelta(days=2)
+            delivery_dates.append(mcp_dt.to_date1(datetime.combine(del_dt, datetime.min.time())))
+        except Exception:
+            continue
+
+    if not expiry_dates:
+        exp_dt = ref_dt + timedelta(days=365)
+        exp_str = mcp_dt.to_date1(datetime.combine(exp_dt, datetime.min.time()))
+        del_str = mcp_dt.to_date1(datetime.combine(exp_dt + timedelta(days=2), datetime.min.time()))
+        expiry_dates = [exp_str]
+        delivery_dates = [del_str]
+        atm_vols = [0.08]
+        dom_rates = [0.02]
+        for_rates = [0.04]
+
+    zeros = [0.0] * len(expiry_dates)
+    ref_str = mcp_dt.to_date1(datetime.combine(ref_dt, datetime.min.time()))
+    spot_str = mcp_dt.to_date1(datetime.combine(spot_date, datetime.min.time()))
+    return mcp_mod.MVolatilitySurface(
+        ref_str,
+        spot_str,
+        spot,
+        True,
+        True,
+        2,
+        1,
+        1,
+        json.dumps(expiry_dates),
+        json.dumps(delivery_dates),
+        json.dumps(atm_vols),
+        json.dumps(zeros),
+        json.dumps(zeros),
+        json.dumps(zeros),
+        json.dumps(zeros),
+        json.dumps(dom_rates),
+        json.dumps(for_rates),
+    )
+
+
+def _tarf_mcp_wrapper_and_handler(obj, label="object"):
+    """与 VanillaOption 一致：保留 Python wrapper，构造时再 getHandler()。"""
+    if obj is None:
+        raise ValueError("%s is required" % label)
+    if isinstance(obj, str):
+        raise ValueError("Invalid %s: %s" % (label, obj))
+    if hasattr(obj, "getHandler"):
+        return obj, obj.getHandler()
+    raise ValueError("Unsupported %s type: %s" % (label, type(obj).__name__))
+
+
+def _tarf_vol_surface_wrapper_and_handler(vol_obj, reference_date, spot):
+    """MFXVolSurface -> MVolatilitySurface（MVE buildTarfVolSurfaceFromFx 等价），返回 (wrapper, handler)。"""
+    if vol_obj is None:
+        raise ValueError("VolSurface is required")
+    if isinstance(vol_obj, str):
+        raise ValueError("Invalid VolSurface: " + vol_obj)
+    tn = type(vol_obj).__name__
+    if tn in ("MFXVolSurface", "McpFXVolSurface"):
+        mvol = _tarf_build_mvol_surface_from_fx(vol_obj, reference_date, spot)
+        return mvol, mvol.getHandler()
+    if tn in ("MVolatilitySurface", "McpVolatilitySurface"):
+        return vol_obj, vol_obj.getHandler()
+    if hasattr(vol_obj, "getHandler"):
+        return vol_obj, vol_obj.getHandler()
+    raise ValueError("Unsupported VolSurface type: " + tn)
+
+
+_TARF_ARGS_KVS = [
+    ("ReferenceDate", "date"),
+    ("ExpiryDate", "date"),
+    ("Frequency", "const"),
+    ("Spot", "float"),
+    ("Strike", "float"),
+    ("Target", "float"),
+    ("Leverage", "float"),
+    ("BuySell", "const"),
+    ("PayoffStyle", "const"),
+    ("FaceValue", "float"),
+    ("BonusAmount", "float", 0.0),
+    ("Calendar", "object"),
+    ("VolSurface", "object"),
+    ("PrevSettlementDate", "date", ""),
+    ("FirstSettlementDate", "date"),
+    ("DateAdjuster", "const"),
+    ("EndToEnd", "bool", True),
+    ("LongStub", "bool", False),
+    ("EndStub", "bool", False),
+    ("DayCounter", "const"),
+    ("ApplyDayCount", "bool", True),
+    ("NumSimulation", "int", 8000),
+    ("McSeed", "int", 0),
+]
+
+_PIVOT_TARF_EXTRA_KVS = [
+    ("HighStrike", "float"),
+    ("LowStrike", "float"),
+    ("Pivot", "float"),
+]
+
+
+def _ensure_tarf_kv_method(method, kvs):
+    if method not in mcp_kv_wrapper.kv_dict:
+        mcp_kv_wrapper.add_method(method, kvs)
+
+
+def _tarf_camel_attr(field_name):
+    s = str(field_name)
+    if not s:
+        return s
+    return s[0].lower() + s[1:]
+
+
+def _parse_tarf_kv(method, args_list, fmt, kvs):
+    _ensure_tarf_kv_method(method, kvs)
+    result, lack_keys = mcp_kv_wrapper.valid_parse(method, args_list, fmt, [], kvs)
+    if lack_keys:
+        raise ValueError("%s missing fields: %s" % (method, ", ".join(lack_keys)))
+    return result
+
+
+def _build_tarf_object(result, args_cls, product_cls):
+    mc_seed = 0
+    field_map = {}
+    keepalive = []
+    for view, val in zip(result["keys"], result["vals"]):
+        if view == "McSeed":
+            mc_seed = int(val or 0)
+            continue
+        if val is None and view != "PrevSettlementDate":
+            continue
+        field_map[view] = val
+
+    args = args_cls()
+    ref_date = field_map.get("ReferenceDate", "")
+    spot = field_map.get("Spot", 0.0)
+    for view, val in field_map.items():
+        if view == "VolSurface":
+            wrapper, handler = _tarf_vol_surface_wrapper_and_handler(val, ref_date, spot)
+            args.volSurface = handler
+            keepalive.append(wrapper)
+        elif view == "Calendar":
+            wrapper, handler = _tarf_mcp_wrapper_and_handler(val, "Calendar")
+            args.calendar = handler
+            keepalive.append(wrapper)
+        elif view == "PrevSettlementDate" and (val is None or val == ""):
+            args.prevSettlementDate = ""
+        else:
+            setattr(args, _tarf_camel_attr(view), val)
+    tarf = product_cls(args)
+    if keepalive:
+        tarf._mcp_keepalive = keepalive
+    if mc_seed:
+        tarf.SetMcSeed(mc_seed)
+    return tarf
+
+
+def _create_tarf(args1, args2, args3, args4, args5, fmt, method, kvs, args_cls, product_cls):
+    args_list = [a for a in (args1, args2, args3, args4, args5) if a is not None]
+    try:
+        result = _parse_tarf_kv(method, args_list, fmt, kvs)
+        return _build_tarf_object(result, args_cls, product_cls)
+    except Exception as e:
+        s = "%s except: %s" % (method, e)
+        logging.exception("%s failed", method)
+        return s
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("args1", "var[][]")
+@xl_arg("args2", "var[][]")
+@xl_arg("args3", "var[][]")
+@xl_arg("args4", "var[][]")
+@xl_arg("args5", "var[][]")
+@xl_arg("fmt", "str")
+def McpTarf(args1, args2, args3, args4, args5, fmt="VP"):
+    """从 VP 键值块直接构造 MTargetRedemptionForward（含可选 McSeed）。"""
+    return _create_tarf(
+        args1, args2, args3, args4, args5, fmt,
+        "McpTarf", _TARF_ARGS_KVS,
+        mcp_mod.TarfArgs, mcp_mod.MTargetRedemptionForward,
+    )
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("args1", "var[][]")
+@xl_arg("args2", "var[][]")
+@xl_arg("args3", "var[][]")
+@xl_arg("args4", "var[][]")
+@xl_arg("args5", "var[][]")
+@xl_arg("fmt", "str")
+def McpPivotTarf(args1, args2, args3, args4, args5, fmt="VP"):
+    """从 VP 键值块直接构造 MPivotTargetRedemptionForward。"""
+    kvs = _TARF_ARGS_KVS + _PIVOT_TARF_EXTRA_KVS
+    return _create_tarf(
+        args1, args2, args3, args4, args5, fmt,
+        "McpPivotTarf", kvs,
+        mcp_mod.PivotTarfArgs, mcp_mod.MPivotTargetRedemptionForward,
+    )
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("tarf", "object")
+@xl_arg("price", "float")
+@xl_arg("tolerance", "float")
+@xl_arg("max_iterations", "int")
+def McpTarfTargetImplied(tarf, price, tolerance=1e-6, max_iterations=100):
+    return tarf.TargetImpliedFromPrice(float(price), float(tolerance), int(max_iterations))
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("tarf", "object")
+@xl_arg("price", "float")
+@xl_arg("tolerance", "float")
+@xl_arg("max_iterations", "int")
+def McpTarfStrikeImplied(tarf, price, tolerance=1e-6, max_iterations=100):
+    return tarf.StrikeImpliedFromPrice(float(price), float(tolerance), int(max_iterations))
+
+
+def _tarf_parse_fixing_dates(raw):
+    """C++ vecDate2Str 逗号分隔，或 JSON 数组字符串 → 扁平 date 列表。"""
+    if raw is None or raw == "":
+        return []
+    s = str(raw).strip()
+    if s.startswith("["):
+        try:
+            arr = json.loads(s)
+            return [str(d).strip() for d in arr if d is not None and str(d).strip()]
+        except Exception:
+            pass
+    return [str(d).strip() for d in s.split(",") if str(d).strip()]
+
+
+@xl_func(macro=False, recalc_on_open=True, auto_resize=True)
+@xl_arg("tarf", "object")
+@xl_arg("fmt", "str")
+@xl_arg("reserve", "int")
+def McpTarfFixingSchedule(tarf, fmt="V", reserve=5):
+    """TARF Fixing 日期列表（扁平 list，再按 fmt 铺表）。
+
+    fmt: V=纵向一列，H=横向一行（与 AOFixingSchedule2 / as_array 一致）。
+    reserve: 最少占用行(V)或列(H)数，不足补空串，避免 spill 覆盖下方内容。
+    """
+    dates = _tarf_parse_fixing_dates(tarf.FixingSchedule())
+    fmt_u = str(fmt or "V").upper()
+    min_slots = max(int(reserve or 0), len(dates))
+    if min_slots > len(dates):
+        dates = dates + [""] * (min_slots - len(dates))
+    return as_array(dates, fmt_u, do_load=False)
+
+
 ### Digital Option ###
 
 @xl_func(macro=False, recalc_on_open=True)
@@ -1255,3 +1645,218 @@ def McpEuropeanDigital(args1, args2, args3, args4, args5, fmt='VP'):
         logging.warning(args)
         logging.warning(s, exc_info=True)
         return s
+
+
+# =========================
+# Experimental FX Forward (EMFXForward / McpEFXForward)
+# 对应 mcplib.h 中 Experimental::EMFXForward
+# 说明：
+#   - 构造函数支持 3 种重载：
+#       (1) 直接给 SpotPx + ForwardPoints + 利率
+#       (2) 通过单边 FXForwardPointsCurve + 双边利率曲线
+#       (3) 通过双边 FXForwardPointsCurve2 + 双边利率曲线
+#   - 通用 Greeks/PV/PnL 函数（McpPrice/McpDelta/McpGamma/McpVega/McpTheta/
+#     McpRho/McpVanna/McpVolga/McpForwardDelta/McpMarketValue/
+#     McpDiscMarketValue/McpPnL/McpDiscPnL）已经可以直接作用于 EFXForward 对象，
+#     无需重复定义；这里仅补充 EFXForward 专属的 Getter 函数。
+# =========================
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("args1", "var[][]")
+@xl_arg("args2", "var[][]")
+@xl_arg("args3", "var[][]")
+@xl_arg("args4", "var[][]")
+@xl_arg("args5", "var[][]")
+@xl_arg("fmt", "str")
+def McpEFXForward(args1, args2, args3, args4, args5, fmt="VP"):
+    """构造 Experimental FX Forward 对象（McpEFXForward）。"""
+    args = [args1, args2, args3, args4, args5, fmt]
+    try:
+        return tool_def.xls_create(*args, key="McpEFXForward")
+    except Exception as e:
+        s = f"McpEFXForward except: {e}"
+        logging.warning(args)
+        logging.warning(s, exc_info=True)
+        return s
+
+
+def _efxfwd_safe_call(name, fn, *args):
+    try:
+        return fn(*args)
+    except Exception as e:
+        s = f"EfxFwd{name} except: {e}"
+        logging.warning(s, exc_info=True)
+        return s
+
+
+# ---- Getters ---------------------------------------------------------------
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+def EfxFwdGetReferenceDate(obj):
+    return _efxfwd_safe_call("GetReferenceDate", obj.GetReferenceDate)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+def EfxFwdGetDeliveryDate(obj):
+    return _efxfwd_safe_call("GetDeliveryDate", obj.GetDeliveryDate)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+def EfxFwdGetBuySell(obj):
+    return _efxfwd_safe_call("GetBuySell", obj.GetBuySell)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+def EfxFwdGetFaceValue(obj):
+    return _efxfwd_safe_call("GetFaceValue", obj.GetFaceValue)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+def EfxFwdGetStrike(obj):
+    return _efxfwd_safe_call("GetStrike", obj.GetStrike)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+def EfxFwdGetTimeToDelivery(obj):
+    return _efxfwd_safe_call("GetTimeToDelivery", obj.GetTimeToDelivery)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+def EfxFwdGetSpot(obj):
+    return _efxfwd_safe_call("GetSpot", obj.GetSpot)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+def EfxFwdGetDomesticRate(obj):
+    return _efxfwd_safe_call("GetDomesticRate", obj.GetDomesticRate)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+def EfxFwdGetForeignRate(obj):
+    return _efxfwd_safe_call("GetForeignRate", obj.GetForeignRate)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+def EfxFwdGetForward(obj):
+    return _efxfwd_safe_call("GetForward", obj.GetForward)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+def EfxFwdScaleFactor(obj):
+    return _efxfwd_safe_call("ScaleFactor", obj.ScaleFactor)
+
+
+# ---- Pricing / PnL ---------------------------------------------------------
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+@xl_arg("isAmount", "bool")
+def EfxFwdPrice(obj, isAmount=True):
+    return _efxfwd_safe_call("Price", obj.Price, isAmount)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+@xl_arg("isAmount", "bool")
+def EfxFwdMarketValue(obj, isAmount=True):
+    return _efxfwd_safe_call("MarketValue", obj.MarketValue, isAmount)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+@xl_arg("isAmount", "bool")
+def EfxFwdDiscMarketValue(obj, isAmount=True):
+    return _efxfwd_safe_call("DiscMarketValue", obj.DiscMarketValue, isAmount)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+@xl_arg("isAmount", "bool")
+@xl_arg("tradePrice", "float")
+def EfxFwdPnL(obj, isAmount=True, tradePrice=0.0):
+    return _efxfwd_safe_call("PnL", obj.PnL, isAmount, tradePrice)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+@xl_arg("isAmount", "bool")
+@xl_arg("tradePrice", "float")
+def EfxFwdDiscPnL(obj, isAmount=True, tradePrice=0.0):
+    return _efxfwd_safe_call("DiscPnL", obj.DiscPnL, isAmount, tradePrice)
+
+
+# ---- Greeks ----------------------------------------------------------------
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+@xl_arg("isCcy2", "bool")
+@xl_arg("isAmount", "bool")
+def EfxFwdDelta(obj, isCcy2=False, isAmount=True):
+    return _efxfwd_safe_call("Delta", obj.Delta, isCcy2, isAmount)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+@xl_arg("isCcy2", "bool")
+@xl_arg("isAmount", "bool")
+def EfxFwdGamma(obj, isCcy2=False, isAmount=True):
+    return _efxfwd_safe_call("Gamma", obj.Gamma, isCcy2, isAmount)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+@xl_arg("isCcy2", "bool")
+@xl_arg("isAmount", "bool")
+def EfxFwdVega(obj, isCcy2=False, isAmount=True):
+    return _efxfwd_safe_call("Vega", obj.Vega, isCcy2, isAmount)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+@xl_arg("isCcy2", "bool")
+@xl_arg("isAmount", "bool")
+def EfxFwdTheta(obj, isCcy2=False, isAmount=True):
+    return _efxfwd_safe_call("Theta", obj.Theta, isCcy2, isAmount)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+@xl_arg("isCcy2", "bool")
+@xl_arg("isAmount", "bool")
+def EfxFwdRho(obj, isCcy2=False, isAmount=True):
+    return _efxfwd_safe_call("Rho", obj.Rho, isCcy2, isAmount)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+@xl_arg("isCcy2", "bool")
+@xl_arg("isAmount", "bool")
+def EfxFwdForwardDelta(obj, isCcy2=False, isAmount=True):
+    return _efxfwd_safe_call("ForwardDelta", obj.ForwardDelta, isCcy2, isAmount)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+@xl_arg("isCcy2", "bool")
+@xl_arg("isAmount", "bool")
+def EfxFwdVanna(obj, isCcy2=False, isAmount=True):
+    return _efxfwd_safe_call("Vanna", obj.Vanna, isCcy2, isAmount)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("obj", "object")
+@xl_arg("isCcy2", "bool")
+@xl_arg("isAmount", "bool")
+def EfxFwdVolga(obj, isCcy2=False, isAmount=True):
+    return _efxfwd_safe_call("Volga", obj.Volga, isCcy2, isAmount)

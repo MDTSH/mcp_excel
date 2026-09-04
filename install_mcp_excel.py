@@ -61,15 +61,15 @@ STRINGS = {
         "forced_python": "使用指定解释器: {exe}",
         "bad_forced": "指定的 Python 不可用: {reason}",
         "deps_ok": "常用计算库已就绪，无需再装。",
-        "deps_need": "计算库尚未安装（{pkgs}）。现在不装也可以：Excel 能启动，只有用到需要这些库的函数时才会提示缺少。",
-        "deps_ask": "现在安装这些库？不是必须，回车=以后再用时再装 [y/N] ",
-        "deps_conda_base": "选中的是 conda 的 base 环境。现在装库可能影响其他项目。确定现在装？[y/N] ",
+        "deps_need": "计算库尚未安装（{pkgs}）。案例 UDF 需要这些库；不装的话格子会显示 #NAME? 或无法计算。",
+        "deps_ask": "现在安装这些库？回车=安装 [Y/n] ",
+        "deps_conda_base": "选中的是 conda 的 base 环境。现在装库可能影响其他项目，但不装则 Excel 函数无法使用。确定现在装？[Y/n] ",
         "deps_numpy2": "该环境已有 NumPy 2.x。MCP 需要 NumPy 1.x。不会自动降级。请换一个 Python，或自行处理后再装。",
         "deps_run": "正在安装: {cmd}",
         "deps_ok_after": "依赖安装成功。",
         "deps_fail": "依赖安装失败。",
         "deps_offline": "可换另一个 Python，或把 wheel 放到 vendor\\wheels 后重试。手工命令:\n  {cmd}",
-        "deps_skip": "已跳过，安装仍继续。以后需要时在本机运行:\n  {cmd}",
+        "deps_skip": "已跳过计算库。打开案例时 UDF 可能显示 #NAME?。需要时在本机运行:\n  {cmd}",
         "cfg_copy": "已从模板创建 {cfg}",
         "cfg_bak": "已备份配置: {bak}",
         "cfg_exe": "已写入 executable = {exe}",
@@ -123,15 +123,15 @@ STRINGS = {
         "forced_python": "Using --python: {exe}",
         "bad_forced": "The given Python cannot be used: {reason}",
         "deps_ok": "Numeric libraries are already present.",
-        "deps_need": "Numeric libraries are not installed yet ({pkgs}). Optional now: Excel will start; a function prompts only when it actually needs a package.",
-        "deps_ask": "Install them now? Optional. Enter = later, when you start using Excel [y/N] ",
-        "deps_conda_base": "This is conda base. Installing here may affect other projects. Install now anyway? [y/N] ",
+        "deps_need": "Numeric libraries are not installed yet ({pkgs}). Workbook UDFs need them; without them cells show #NAME? or will not calculate.",
+        "deps_ask": "Install them now? Enter = yes [Y/n] ",
+        "deps_conda_base": "This is conda base. Installing here may affect other projects, but UDFs will not work without them. Install now? [Y/n] ",
         "deps_numpy2": "This env has NumPy 2.x; MCP needs NumPy 1.x. Will not downgrade. Pick another Python.",
         "deps_run": "Installing: {cmd}",
         "deps_ok_after": "Dependencies installed.",
         "deps_fail": "pip install failed.",
         "deps_offline": "Pick another Python, or put wheels in vendor\\wheels and retry.\nManual command:\n  {cmd}",
-        "deps_skip": "Skipped; setup continues. Install later with:\n  {cmd}",
+        "deps_skip": "Skipped numeric libraries. Opening example workbooks may show #NAME?. Install later with:\n  {cmd}",
         "cfg_copy": "Created {cfg} from template.",
         "cfg_bak": "Config backup: {bak}",
         "cfg_exe": "Wrote executable = {exe}",
@@ -865,8 +865,8 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     p.add_argument("--license-key", dest="license_key", default="")
     p.add_argument("--license-file", dest="license_file", default="")
     p.add_argument("--skip-license", action="store_true")
-    p.add_argument("--skip-deps", action="store_true", help="do not install numeric libraries (default)")
-    p.add_argument("--install-deps", action="store_true", help="install numpy/pandas/etc now")
+    p.add_argument("--skip-deps", action="store_true", help="do not install numpy/pandas (UDFs will show #NAME?)")
+    p.add_argument("--install-deps", action="store_true", help="install numpy/pandas/etc (default)")
     p.add_argument("--skip-excel", action="store_true")
     p.add_argument("--yes", "-y", action="store_true", help="accept defaults (still prompts language unless --lang)")
     p.add_argument("--non-interactive", action="store_true")
@@ -1101,16 +1101,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     later_cmd = " ".join(pip_cmd(chosen.exe, root))
     if chosen.ready:
         say(ui, "deps_ok", logger)
-    elif args.skip_deps or (auto and not args.install_deps):
+    elif args.skip_deps:
         say(ui, "deps_skip", logger, cmd=later_cmd)
     else:
         say(ui, "deps_need", logger, pkgs=", ".join(chosen.missing))
-        if args.install_deps:
+        if args.install_deps or auto:
             proceed = True
         elif chosen.is_conda_base:
-            proceed = yes(ask(ui.t("deps_conda_base"), "n"), False)
+            proceed = yes(ask(ui.t("deps_conda_base"), "y"), True)
         else:
-            proceed = yes(ask(ui.t("deps_ask"), "n"), False)
+            proceed = yes(ask(ui.t("deps_ask"), "y"), True)
         if not proceed:
             say(ui, "deps_skip", logger, cmd=later_cmd)
         else:

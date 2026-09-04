@@ -8,6 +8,8 @@
 
 **功能描述：** LiveStore / RawMD 两表对同一 CSV（USDCNH、EURUSD，窗口 60，EWMA）取对象并读数，便于对照。
 
+> **打开即可用**：请下载 [TC31–TC46 完整案例包](/download/MCP-TC31-46-LiveStoreRawMD.zip)（含全部工作簿和共用的 `data/`）。解压后打开 `zh` 目录里的 xlsx。只下单个工作簿时，必须把包里的 `data` 文件夹放到与 xlsx **同一目录**。
+
 [下载 MCP-TC42-HistVolFromCSV.xlsx](./MCP-TC42-HistVolFromCSV.xlsx)
 
 ## **对象链**

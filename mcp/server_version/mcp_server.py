@@ -1943,7 +1943,7 @@ def is_int(value):
         return False
 
 
-def decode(obj: Union[List, Dict], flag: bool = False) -> np.ndarray:
+def decode(obj: Union[List, Dict], flag: bool = False) -> "np.ndarray":
     """
     将输入对象解码为二维数组，支持输出到 Excel。
 

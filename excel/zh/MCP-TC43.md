@@ -8,6 +8,8 @@
 
 **功能描述：** LiveStore / RawMD / JsonReader 三表对同一 `CNY_CREDIT_CFETS`（Spreads 单位 BP，依赖 `CNYDEPO`）取对象并读 1Y 风险率与违约概率。走 C++ Manager / Store。
 
+> **打开即可用**：请下载 [TC31–TC46 完整案例包](/download/MCP-TC31-46-LiveStoreRawMD.zip)（含全部工作簿和共用的 `data/`）。解压后打开 `zh` 目录里的 xlsx。只下单个工作簿时，必须把包里的 `data` 文件夹放到与 xlsx **同一目录**。
+
 [下载 MCP-TC43-CreditCurve.xlsx](./MCP-TC43-CreditCurve.xlsx)
 
 ## **对象链**

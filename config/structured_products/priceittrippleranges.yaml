@@ -1,0 +1,134 @@
+# ============================================================================
+# Price-It 三层结构（Triple Ranges）产品结构定义
+# ============================================================================
+#
+# 该脚本尽量沿用 Price-It Generic Security 的变量命名：
+# - Type: 0 = CALL, 1 = PUT
+# - OptionFeePayRcv: 1 = Receive, -1 = Pay
+# - FloatingPayRcv: 1 = Receive, -1 = Pay
+# - Price-It AsOfDate 对应 MCP ReferenceDate
+# - ObservationDate 对应 MCP ExpiryDate，PayoffDate 对应 MCP EndDate
+# - LowerStrike / UpperStrike 放在 percentages 中，表示相对 ObservationPrice 的比例
+# - FloatingDayCount 对应 MCP basis: Act360，现金流期限使用内部函数 t()
+#
+# 注意：Underlying、payoffCcy、secName、fundingMeth 等文本字段属于交易元数据，
+# 不参与 SDP payoff 计算，通常由外层 trade/market-data 层维护。
+# ============================================================================
+
+packages:
+  - name: PriceItTrippleRanges
+    structure:
+      buy_sell_field: ""
+
+      dates:
+        # Price-It AsOfDate: MCP 构造入参 ReferenceDate，也是脚本初始化时点
+        - ReferenceDate
+        - StartDate
+        - ExpiryDate
+        - OptionFeeDate
+        - EndDate
+        - Undiscount
+
+      strikes:
+        - ObservationPrice
+
+      strikes_relation: UpperStkPerc > LowerStkPerc
+
+      barriers: []
+
+      ko_barriers: []
+
+      yields:
+        - HighRate
+        - MidRate
+        - LowRate
+
+      percentages:
+        - LowerStkPerc
+        - UpperStkPerc
+
+      arguments:
+        - Type
+        - InitialFixing
+        - AsOfDateFixing
+        - OptionFeePayRcv
+        - FloatingPayRcv
+
+      amounts:
+        - Notional
+        - OptionFee
+
+      calendars:
+        - Calendar
+
+      basis: Act360
+
+    schedules: []
+
+    payoff:
+      StartDate: |
+        S0 = ObservationPrice
+        LowerStrike = S0 * LowerStkPerc
+        UpperStrike = S0 * UpperStkPerc
+        FXSpot = 0
+        CallRate = 0
+        PutRate = 0
+        Rate = 0
+        UpperProb_ = 0
+        MiddleProb_ = 0
+        LowerProb_ = 0
+
+      ReferenceDate: |
+        FinalFixing = InitialFixing
+
+      OptionFeeDate: |
+        opt pays OptionFeePayRcv * OptionFee
+
+      ExpiryDate: |
+        FXSpot = Spot()
+        if (currentDate() = ReferenceDate) then
+          FXSpot = AsOfDateFixing
+        endIf
+
+        FinalFixing = FXSpot
+        UpperProb_ = 0
+        MiddleProb_ = 0
+        LowerProb_ = 0
+
+        if (FinalFixing >= UpperStrike) then
+          UpperProb_ = 1
+        endIf
+        if (FinalFixing < UpperStrike and FinalFixing >= LowerStrike) then
+          MiddleProb_ = 1
+        endIf
+        if (FinalFixing < LowerStrike) then
+          LowerProb_ = 1
+        endIf
+
+        CallRate = LowRate
+        if (FinalFixing >= LowerStrike) then
+          CallRate = MidRate
+        endIf
+        if (FinalFixing >= UpperStrike) then
+          CallRate = HighRate
+        endIf
+
+        PutRate = LowRate
+        if (FinalFixing <= UpperStrike) then
+          PutRate = MidRate
+        endIf
+        if (FinalFixing <= LowerStrike) then
+          PutRate = HighRate
+        endIf
+
+        Rate = PutRate
+        if (Type = 0) then
+          Rate = CallRate
+        endIf
+
+      EndDate: |
+        opt pays FloatingPayRcv * Notional * Rate * t()
+        df pays 1
+        UpperProb pays UpperProb_ / df
+        MiddleProb pays MiddleProb_ / df
+        LowerProb pays LowerProb_ / df

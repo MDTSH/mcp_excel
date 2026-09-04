@@ -1,0 +1,95 @@
+# ============================================================================
+# 安全气囊结构场外衍生品（Airbag）产品结构定义
+# ============================================================================
+#
+# 产品概述:
+# 安全气囊是一种向下敲入看涨期权，具有保护机制。
+# - 观察条件：每日观察是否敲入
+# - 敲入条件：价格 ≤ 敲入价格
+# - 支付方式：未敲入时为看涨期权收益，敲入后为持有标的资产收益
+#
+# 典型参数示例:
+#    - 期初价格: 100
+#    - 执行价格: 100% (LowerStrkPercentage)
+#    - 敲入价格: 85% (KnockInBarPercentage)
+#    - 未敲入看涨参与率: 0.8 (CallParti)
+#    - 重置后看涨参与率: 1.0 (ResetCallParti)
+#    - 敲入下跌参与率: 1.0 (KnockInParti)
+#
+# ============================================================================
+
+packages:
+  - name: Airbag
+    structure:
+      buy_sell_field: ""
+      
+      dates:
+        - ReferenceDate
+        - StartDate
+        - ExpiryDate
+        - EndDate
+      
+      strikes:
+        - ObservationPrice
+      
+      barriers: []
+      
+      ko_barriers: []
+      
+      yields: []
+      
+      percentages:
+        - LowerStrkPercentage
+        - KnockInBarPercentage
+        - CallParti
+        - ResetCallParti
+        - KnockInParti
+      
+      arguments: []
+      
+      amounts:
+        - Notional
+      
+      calendars:
+        - Calendar
+      
+      basis: Act360
+    
+    schedules:
+      - name: KnockInObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Daily
+        calendar: "@Calendar"
+        date_adjuster: Actual
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+    
+    payoff:
+      ReferenceDate: |
+        S0 = ObservationPrice
+        Strike = S0 * LowerStrkPercentage
+        KnockInBarrier = S0 * KnockInBarPercentage
+        IsKnockedIn = 0
+        
+      KnockInObservationSchedule: |
+        if (IsKnockedIn = 0) then
+          if (Spot() <= KnockInBarrier) then
+            IsKnockedIn = 1
+          endIf
+        endIf
+      
+      ExpiryDate: |
+        if (IsKnockedIn = 0) then
+          if (Spot() > Strike) then
+            return = (Spot() - Strike) / S0 * CallParti
+          else
+            return = 0
+          endIf
+        else
+          return = (Spot() - Strike) / S0 * ResetCallParti
+        endIf
+      
+      EndDate: |
+        opt pays return * Notional

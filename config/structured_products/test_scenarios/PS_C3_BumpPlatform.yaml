@@ -1,0 +1,80 @@
+# ============================================================================
+# PS-C3: bump平台区（Greeks正确性验证）
+# ============================================================================
+# 
+# 测试目标：验证Greeks计算的正确性
+# - 对Delta（bump spot）与Vega（bump vol）分别做bump扫描
+# - h值：1e-4, 3e-4, 1e-3, 3e-3, 1e-2（相对bump）
+# - 要求：使用CRN（Common Random Numbers）
+# - 每个h用同样的R-scan估SE
+# - 预期：在某个h区间出现"平台"（估计对h不敏感，且SE可接受）
+# 
+# 预期结果：
+# - Delta和Vega在某个h区间内稳定（平台区）
+# - 标准误差可接受
+# - 适合用于验证Greeks计算的正确性
+# ============================================================================
+
+test_scenario:
+  name: "PS-C3: Bump Platform Test for Greeks"
+  product_id: "ProtectedSnowball"
+  description: "验证Greeks计算的正确性（Delta和Vega的bump平台区）"
+  
+  # 使用真实波动率，测试Greeks
+  path_type: "greeks"
+  volatility: 0.20  # 20%波动率
+  spot_path: "stochastic"  # 随机路径
+  
+  # 产品参数（中等触发概率）
+  parameters:
+    InitialPrice: 100.0
+    ObservationPrice: 100.0
+    UpperBarPercentage: 1.03  # 103%，中等KO概率
+    LowerBarPercentage: 0.80  # 80%，中等KI概率
+    KnockOutReturnRate: 0.18
+    DividendCouponRate: 0.20
+    MinReturnRate: 0.02
+    KnockInMinReturnRate: -0.20
+    StrikePercentage: 1.0
+    ParticipationRate: 1.0
+    KnockOutStepAdjustment: 0.005
+    Notional: 1000000.0
+    BuySell: "Sell"
+  
+  # 日期设置
+  dates:
+    ReferenceDate: "2026/1/26"
+    StartDate: "2026/1/26"
+    ObservationStartDate: "2026/2/5"
+    ExpiryDate: "2027/1/26"
+    EndDate: "2027/1/28"
+    PremiumDate: "2026/1/26"
+  
+  # 市场参数
+  market:
+    RiskFreeRate: 0.03
+    Dividend: 0.0
+    Volatility: 0.20  # 20%波动率
+    DayCounter: "Act365Inclusive"
+  
+  # 模拟参数
+  simulation:
+    num_simulations: 200000  # 固定N
+    num_runs_per_h: 10  # 每个h值运行10次（R-scan）
+    bump_sizes: [1e-4, 3e-4, 1e-3, 3e-3, 1e-2]  # 相对bump大小
+    use_crn: true  # 使用CRN（注意：实际实现可能无法完全控制）
+  
+  # 预期结果（断言）
+  assertions:
+    delta_platform:
+      description: "Delta在某个h区间内应该稳定（平台区）"
+      tolerance: 0.05  # 5%的相对容差
+    vega_platform:
+      description: "Vega在某个h区间内应该稳定（平台区）"
+      tolerance: 0.05  # 5%的相对容差
+    delta_se_reasonable:
+      description: "Delta的标准误差应该可接受"
+      max_se_ratio: 0.1  # SE/Delta的比值不应超过10%
+    vega_se_reasonable:
+      description: "Vega的标准误差应该可接受"
+      max_se_ratio: 0.1  # SE/Vega的比值不应超过10%

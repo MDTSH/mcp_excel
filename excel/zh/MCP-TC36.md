@@ -12,6 +12,8 @@ FX 隐含利率：JSON 条目 `USDDEPO_IMPLIED`（`CNHDEPO` + `USDCNH_FXFP_BGN`�
 
 数据：`data/market_data/MCP_MARKET_DATA_20260626.json`，估值日 2026-06-26。主要 Sheet：`Config`（Manager 统一入口）、`RawMD`、`Direct`、`Compare`（跨表引用两条曲线）。F9 后两条路径的 `YieldCurveZeroRate` 应对齐。
 
+> **打开即可用**：请下载 [TC31–TC46 完整案例包](/download/MCP-TC31-46-LiveStoreRawMD.zip)（含全部工作簿和共用的 `data/`）。解压后打开 `zh` 目录里的 xlsx。只下单个工作簿时，必须把包里的 `data` 文件夹放到与 xlsx **同一目录**。
+
 [下载 MCP-TC36-ImpliedYieldCurve.xlsx](./MCP-TC36-ImpliedYieldCurve.xlsx)
 
 ## **对象链**

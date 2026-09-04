@@ -1,0 +1,177 @@
+# ============================================================================
+# 封顶气囊结构场外衍生品（Capped Airbag）产品结构定义
+# ============================================================================
+#
+# 产品概述（Product Overview）:
+# 封顶气囊是一种带敲入保护机制的结构化产品，具有封顶收益特征。
+# 其特点是：
+# - 未敲入时：收益有上限，收益 = min(max(期末价格 - 执行价格1, 0), 执行价格2 - 执行价格1) × 名义金额 / 期初价格
+# - 敲入后：收益与标的资产价格变动直接挂钩，收益 = (期末价格 - 期初价格) / 期初价格 × 名义金额
+# - 美式观察：存续期内每日观察是否敲入
+# - 到期支付：所有收益在到期日统一结算
+#
+# Termsheet 产品条款说明:
+# ----------------------
+#
+# 1. 产品基本信息:
+#    - 产品类型: 封顶气囊（Capped Airbag）
+#    - 标的资产: 股票指数、个股或其他金融资产
+#    - 产品期限: 通常为3-12个月
+#    - 观察频率: 敲入为每日观察（American型）
+#
+# 2. 敲入机制（Knock-in Mechanism）:
+#    - 敲入观察日: 存续期内每日观察（American型）
+#    - 敲入价格: 敲入障碍价
+#    - 敲入条件: 若在任意观察日，标的价格 ≤ 敲入价格，则触发敲入
+#    - 敲入影响: 一旦触发敲入，产品从封顶收益模式转换为直接挂钩标的资产价格变动
+#
+# 3. 收益分配机制:
+#    a) 未敲入（持有到期）:
+#       - 产品存续期间从未触发敲入
+#       - 结算收益 = min(max(期末价格 - 执行价格1, 0), 执行价格2 - 执行价格1) × 名义金额 / 期初价格
+#
+#    b) 已敲入（持有到期）:
+#       - 产品存续期间触发敲入
+#       - 结算收益 = (期末价格 - 期初价格) / 期初价格 × 名义金额（四舍五入到小数点后3位）
+#       - 如果期末价格低于期初价格，则承担下跌损失
+#
+# 4. 支付方向:
+#    - 如果结算收益 > 0，则甲方向乙方支付结算收益
+#    - 如果结算收益 <= 0，则乙方向甲方支付结算收益的绝对值金额
+#
+# 5. 典型参数示例:
+#    - 期初价格: 100
+#    - LowerStrike, Strike1（执行价格1）: 100
+#    - UpperStrike, Strike2（执行价格2）: 110
+#    - KnockInBarrier（敲入价格）: 85
+#    - Notional（名义金额）: 1000000
+#    - 产品期限: 6个月
+#
+# 6. 字段映射说明:
+#    - LowerStrike, Strike1: 执行价格1
+#    - UpperStrike, Strike2: 执行价格2
+#    - KnockInBarrier: 敲入障碍价
+#    - Notional: 名义金额
+#
+# ============================================================================
+
+packages:
+  - name: CappedAirbag
+    structure:
+      buy_sell_field: BuySell
+      
+      dates:
+        - StartDate          # 期初日期
+        - EndDate            # 期末日期（结算日）
+        - ExpiryDate         # 到期日
+        - PremiumDate        # 保费支付日
+      
+      strikes:
+        - ObservationPrice           # 期初价格
+      
+      barriers: []
+      
+      ko_barriers: 
+        - KnockInBarrier
+      yields: []
+      percentages: 
+        - LowerStrkPercentage            # 执行价格1%
+        - UpperStrkPercentage            # 执行价格2%
+        - KnockInBarPercentage            # 敲入障碍价%
+        - ParticipateRate1            # 封顶收益率
+      arguments: []
+      
+      amounts:
+        - Notional           # 名义金额
+      
+      calendars:
+        - Calendar
+      
+      basis: Act360
+      
+      # VaR 配置
+      var_config:
+        enabled: true
+        default_horizons:
+          - "1D"
+          - "10D"
+          - "1M"
+          - "3M"
+          - "4M"
+          - "150D"
+          - "5M"
+          - "6M"
+      
+      # PFE 配置
+      pfe_config:
+        enabled: false
+        default_horizons:
+          - "1M"
+          - "3M"
+          - "4M"
+          - "150D"
+          - "5M"
+          - "6M"
+    
+    schedules:
+      - name: KnockInObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Daily
+        calendar: "@Calendar"
+        date_adjuster: Following
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+    
+    payoff:
+      StartDate: |
+        S0 = ObservationPrice       # 期初价格
+        LowerStrike = S0 * LowerStrkPercentage
+        UpperStrike = S0 * UpperStrkPercentage
+        KnockInBarrier = S0 * KnockInBarPercentage
+        IsKnockedIn = 0              # 是否曾经敲入（0=未敲入，1=已敲入）
+        return =0
+
+      
+      KnockInObservationSchedule: |
+        # 每日观察是否敲入
+        if (IsKnockedIn = 0) then
+          if (Spot() <= KnockInBarrier) then
+            IsKnockedIn = 1
+          endIf
+        endIf
+      
+      ExpiryDate: |        
+        if (IsKnockedIn = 0) then
+          return = max(Spot()-S0, 0)/S0 - max(Spot()-S0* ParticipateRate1,0)/S0
+        else
+          return = (Spot()-S0)/S0
+        endIf
+      
+      EndDate: |
+        opt pays return*Notional
+      
+      # VaR 观察脚本模板（程序会自动替换 VAR_VALUE 为 VAR_VALUE_{HORIZON}）
+      VarObservationDate: |
+        return_ = 0
+        if (IsKnockedIn = 0) then
+          return_ = max(Spot()-S0, 0)/S0 - max(Spot()-S0* ParticipateRate1,0)/S0
+        else
+          return_ = (Spot()-S0)/S0
+        endIf
+      
+        
+        VAR_VALUE pays return_*Notional
+      
+      # PFE 观察脚本模板（程序会自动替换 PFE_VALUE 为 PFE_VALUE_{HORIZON}）
+      PfeObservationDate: |
+        return_ = 0
+        FinalPrice_ = Spot()
+        if (IsKnockedIn = 0) then
+          return_ = max(Spot()-S0, 0)/S0 - max(Spot()-S0* ParticipateRate1,0)/S0
+        else
+          return_ = (Spot()-S0)/S0
+        endIf
+        PFE_VALUE pays return_*Notional
+

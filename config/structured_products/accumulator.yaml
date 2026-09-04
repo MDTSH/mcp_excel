@@ -1,0 +1,124 @@
+# ============================================================================
+# 累购累沽结构场外衍生品（Accumulator/Decumulator）产品结构定义
+# ============================================================================
+#
+# 产品概述:
+# 累购累沽是一种杠杆式累计交易结构。
+# - 观察条件：每月观察敲出，每日累计交易
+# - 敲出条件：累购时价格 ≥ 敲出价，累沽时价格 ≤ 敲出价
+# - 累计规则：价格低于行权价时以杠杆比例购买/卖出，价格在行权价和敲出价之间时正常交易
+# - 支付方式：到期时按累计份数和价格差结算
+#
+# 典型参数示例:
+#    - 期初价格: 100
+#    - 行权价格: 90% (StrikePercentage)
+#    - 敲出价格: 105% (UpperBarPercentage)
+#    - 杠杆比例: 2 (LeverageRatio)
+#
+# ============================================================================
+
+packages:
+  - name: Accumulator
+    structure:
+      buy_sell_field: BuySell
+      
+      dates:
+        - ReferenceDate
+        - StartDate
+        - ExpiryDate
+        - EndDate
+      
+      strikes:
+        - ObservationPrice
+      
+      barriers: []
+      
+      ko_barriers: []
+      
+      yields: []
+      
+      percentages:
+        - StrikePercentage
+        - UpperBarPercentage
+      
+      arguments:
+        - LeverageRatio
+      
+      amounts:
+        - Notional
+      
+      calendars:
+        - Calendar
+      
+      basis: Act360
+    
+    schedules:
+      - name: KnockOutObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Monthly
+        calendar: "@Calendar"
+        date_adjuster: Following
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+      
+      - name: AccumulationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Daily
+        calendar: "@Calendar"
+        date_adjuster: Actual
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+    
+    payoff:
+      ReferenceDate: |
+        S0 = ObservationPrice
+        Strike = S0 * StrikePercentage
+        UpperBarrier = S0 * UpperBarPercentage
+        IsKnockedOut = 0
+        TotalShares = 0
+        LeverageRatio = 2
+        
+        CurrentPrice = Spot()
+        KnockOutPrice = 0
+        FinalPrice = 0
+        PriceDiff = 0
+        TotalProfit = 0
+        FinalYield = 0
+        
+      AccumulationSchedule: |
+        if (IsKnockedOut = 0) then
+          CurrentPrice = Spot()
+          if (CurrentPrice < Strike) then
+            TotalShares = TotalShares + LeverageRatio
+          else
+            if (CurrentPrice >= Strike and CurrentPrice < UpperBarrier) then
+              TotalShares = TotalShares + 1
+            endIf
+          endIf
+        endIf
+        
+      KnockOutObservationSchedule: |
+        if (IsKnockedOut = 0) then
+          if (Spot() >= UpperBarrier) then
+            IsKnockedOut = 1
+            KnockOutPrice = Spot()
+          endIf
+        endIf
+      
+      ExpiryDate: |
+        if (IsKnockedOut = 1) then
+          FinalPrice = KnockOutPrice
+        else
+          FinalPrice = Spot()
+        endIf
+        
+        PriceDiff = FinalPrice - Strike
+        TotalProfit = TotalShares * PriceDiff
+        FinalYield = TotalProfit / Notional
+      
+      EndDate: |
+        opt pays Notional * FinalYield

@@ -1,0 +1,268 @@
+# ============================================================================
+# 凤凰结构场外衍生品（Phoenix Structure）产品结构定义
+# ============================================================================
+#
+# 产品概述（Product Overview）:
+# 凤凰结构是一种带票息观察与记忆机制的场外衍生品。其特点是：
+# - 锁定期后按月观察：若价格高于敲出障碍，产品提前赎回并支付敲出票息；
+# - 未敲出时，若价格高于票息门槛，则当期票息触发（可记忆或即付）；
+# - 全程监控敲入：若价格低于敲入障碍，则到期本金按标的表现结算。
+#
+# Termsheet 产品条款说明:
+# ----------------------
+#
+# 1. 产品基本信息:
+#    - 产品类型: 凤凰结构自动赎回/票息观察衍生品
+#    - 标的资产: 股票指数、个股或其他金融资产
+#    - 产品期限: 通常为1-3年
+#    - 观察频率: 敲出/票息为月度观察，敲入为每日观察
+#
+# 2. 敲出机制（Knock-out Mechanism）:
+#    - 敲出观察日: 锁定期结束后，每月定期观察（如每月15日）
+#    - 敲出价格: 通常设定为初始价格的≥100%（如103%）
+#    - 敲出条件: 若在敲出观察日，标的价格 ≥ 敲出价格，则提前赎回
+#    - 敲出收益: 支付敲出票息（年化票息率 × 已持有天数/365）
+#    - 锁定期: 通常为3个月，锁定期内不触发敲出
+#
+# 3. 票息机制（Coupon Mechanism）:
+#    - 票息观察日: 与敲出观察同日（每月）
+#    - 票息门槛: 通常设为初始价格的90%左右（如90%）
+#    - 触发条件: 若未敲出且标的价格 ≥ 票息门槛，则当期票息触发
+#    - 票息处理: 可配置为记忆（未触发累计，触发时补计）或即付/到期统一结算
+#
+# 4. 敲入机制（Knock-in Mechanism）:
+#    - 敲入观察日: 存续期内每日观察（American型）
+#    - 敲入价格: 通常设为初始价格的75-85%（如80%）
+#    - 敲入影响: 一旦敲入，到期本金按标的价格比例结算（不再保本）
+#
+# 5. 收益分配机制:
+#    a) 提前敲出:
+#       - 触发敲出则产品提前终止
+#       - 支付敲出票息（按实际持有天数计息）
+#
+#    b) 未敲出（持有到期）:
+#       - 若未敲入：本金全额返还，并按票息门槛在到期点的达成情况补计尾期票息
+#       - 若已敲入：本金按到期标的价格/初始价格的比例结算；票息按规则累计/补计
+#
+# 6. 典型参数示例:
+#    - 初始价格: 100
+#    - UpperBarrier（敲出价格）: 103 (103% of initial)
+#    - CouponBarrier（票息门槛）: 90 (90% of initial)
+#    - LowerBarrier（敲入价格）: 80 (80% of initial)
+#    - HighYield（年化票息率）: 18% (年化)
+#    - LockPeriod（锁定期）: 3个月
+#    - Memory: 1（票息记忆）
+#    - PayInAdvance: 0（到期统一结算票息）
+#
+# 7. 字段映射说明:
+#    - UpperBarrier: 敲出障碍价（对应 KO 障碍）
+#    - CouponBarrier: 票息门槛（达到则当期票息成立）
+#    - LowerBarrier: 敲入障碍价（对应 KI 障碍）
+#    - HighYield: 年化票息率（PhoenixCoupon）
+#
+# ============================================================================
+
+packages:
+  - name: Phoenix
+    structure:
+      # 买卖方向字段（空字符串表示产品内部处理）
+      buy_sell_field: ""
+      
+      # 日期字段定义
+      dates:
+        - ReferenceDate      # 参考日期
+        - StartDate          # 产品起始日
+        - ExpiryDate         # 产品到期日（最后一次月度观察日）
+        - EndDate            # 产品结束日（最终结算日）
+      
+      # 行权价/障碍价字段定义
+      strikes: []
+
+      
+      # 障碍价关系约束
+      strikes_relation: UpperBarrier > CouponBarrier > LowerBarrier
+      
+      # 其他障碍价列表（本产品不使用）
+      barriers: []
+
+      
+      # 收益率字段列表（本产品不使用）
+      yields: 
+      - HighYield          # 年化票息率（如18表示18%）
+      
+      # 百分比字段列表（本产品不使用）
+      percentages: 
+        - UpperBarPercentage       # 敲出障碍（绝对值或相对初始价的百分比）
+        - LowerBarPercentage       # 敲入障碍（绝对值或相对初始价的百分比）
+        - CouponBarPercentage      # 票息门槛（绝对值或相对初始价的百分比）
+      # 参数字段定义
+      arguments:
+        - LockPeriod         # 锁定期（月数，如3表示3个月）
+        - Memory             # 票息是否记忆（1=记忆，0=不记忆）
+        - PayInAdvance       # 票息是否观察日即付（1=即付，0=到期统一结算）
+      
+      # 金额字段定义
+      amounts:
+        - Notional           # 名义本金
+      
+      # 日历字段定义
+      calendars:
+        - Calendar           # 交易日历
+      
+      # 计息基础
+      basis: Act360
+    
+    # 时间表定义
+    schedules:
+      # 敲出/票息观察时间表（月度，锁定期结束后开始）
+      - name: ObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Monthly    # 月度频率
+        calendar: "@Calendar"
+        date_adjuster: Following
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+      
+      # 敲入观察时间表（每日观察）
+      - name: KnockInObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Daily      # 每日频率
+        calendar: "@Calendar"
+        date_adjuster: Actual
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+    
+    # 收益计算逻辑（Payoff Script）
+    payoff:
+      # 初始化：在参考日期初始化所有变量
+      StartDate: |
+        S0 = ObservationPrice
+        UpperBarrier = S0 * UpperBarPercentage
+        LowerBarrier = S0 * LowerBarPercentage
+        CouponBarrier = S0 * CouponBarPercentage
+        IsKnockedOut   = 0                   # 是否已敲出（0=未敲出，1=已敲出）
+        IsKnockedIn    = 0                   # 是否已敲入（0=未敲入，1=已敲入）
+        AccruedCoupons = 0                   # 到期统一结算的累计票息
+        PaidCoupons    = 0                   # 观察日即时支付的累计票息
+        DaysHeld       = 0                   # 已计息天数（用于按天计息，以年为单位，使用 t() 函数）
+
+        # 默认参数（如未外部赋值）
+        if (LockPeriod = 0) then LockPeriod = 3 endIf
+        if (Memory = 0) then Memory = 1 endIf
+        if (PayInAdvance = 0) then PayInAdvance = 0 endIf
+        
+        # 票息年化率输入（沿用 HighYield）
+        PhoenixCoupon  = HighYield
+        
+      # 敲入观察：每日检查是否触发敲入
+      KnockInObservationSchedule: |
+        # 仅在未敲出且未敲入时检查敲入条件
+        if (IsKnockedOut = 0 and IsKnockedIn = 0) then
+          if (Spot() <= LowerBarrier) then
+            IsKnockedIn = 1                # 触发敲入
+          endIf
+        endIf
+        
+      # 月度观察：先检查敲出，再检查票息门槛
+      ObservationSchedule: |
+        # 仅在未敲出时观察
+        if (IsKnockedOut = 0) then
+          # 使用 t() * 12 来估算从起始日到当前观察日的月数（t() 是年化时间，乘以12得到月数）
+          # 例如：t() = 0.25 表示 3 个月，t() = 0.5 表示 6 个月
+          MonthsFromStart = t() * 12
+          
+          # 敲出条件（锁定期后）
+          if (MonthsFromStart >= LockPeriod and Spot() >= UpperBarrier) then
+            IsKnockedOut = 1               # 敲出
+            # 使用 t() 直接计算年化时间，票息 = 名义本金 × 票息率 × 时间（年）
+            # 因为 DaysHeld / 365.0 = t()，所以可以直接使用 t()
+            KO_Coupon = Notional * (PhoenixCoupon / 100.0) * t()
+            DaysHeld = t()  # 记录已计息时间（年）
+            
+            if (PayInAdvance = 1) then
+              PaidCoupons = PaidCoupons + KO_Coupon
+            else
+              AccruedCoupons = AccruedCoupons + KO_Coupon
+            endIf
+            
+          else
+            # 未敲出：检查票息门槛（达到则当期票息成立）
+            if (Spot() >= CouponBarrier) then
+              # 计算自上次累计后的新增时间（年）
+              CurrentTime = t()  # 当前时间（年）
+              AlreadyAccrued = DaysHeld  # 已计息时间（年）
+              NewTime = CurrentTime - AlreadyAccrued
+              if (NewTime < 0) then NewTime = 0 endIf
+              
+              CurrentCoupon = Notional * (PhoenixCoupon / 100.0) * NewTime
+              
+              # 记忆与支付方式
+              if (Memory = 1) then
+                # 记忆：累积未支付的票息
+                if (PayInAdvance = 1) then
+                  PaidCoupons = PaidCoupons + CurrentCoupon
+                else
+                  AccruedCoupons = AccruedCoupons + CurrentCoupon
+                endIf
+                DaysHeld = DaysHeld + NewTime
+              else
+                # 不记忆：仅本期票息（不补未触发期）
+                if (PayInAdvance = 1) then
+                  PaidCoupons = PaidCoupons + CurrentCoupon
+                else
+                  AccruedCoupons = AccruedCoupons + CurrentCoupon
+                endIf
+                DaysHeld = DaysHeld + NewTime
+              endIf
+            endIf
+          endIf
+        endIf
+        
+      # 到期结算：在产品到期日计算最终收益率
+      ExpiryDate: |
+        # 情况1: 已提前敲出
+        if (IsKnockedOut = 1) then
+          # 收益率 = 累计票息 / 名义本金
+          FinalYield = (PaidCoupons + AccruedCoupons) / Notional
+          
+        # 情况2: 未敲出（持有到期）
+        else
+          # 补计到期前剩余区间票息（若到期点满足票息门槛）
+          # 在 ExpiryDate 执行时，t() 对应从起始日到到期日的年化时间
+          TotalTime = t()  # 总时间（年）
+          RemainingTime = TotalTime - DaysHeld  # 剩余时间（年）
+          if (RemainingTime < 0) then RemainingTime = 0 endIf
+          
+          if (Spot() >= CouponBarrier) then
+            TailCoupon = Notional * (PhoenixCoupon / 100.0) * RemainingTime
+          else
+            TailCoupon = 0
+          endIf
+          
+          # 计算总票息
+          TotalCoupons = PaidCoupons + AccruedCoupons + TailCoupon
+          
+          # 本金部分：是否曾敲入
+          if (IsKnockedIn = 0) then
+            # 未敲入：本金全额返还，收益率为票息率
+            FinalYield = TotalCoupons / Notional
+          else
+            # 已敲入：本金按标的表现结算
+            FinalPrice  = Spot()
+            PriceRatio  = FinalPrice / InitialPrice
+            if (PriceRatio < 0) then PriceRatio = 0 endIf
+            # 收益率 = 票息率 + 本金盈亏率
+            # 本金盈亏率 = PriceRatio - 1.0（-1 到 +∞，-1 表示本金全部亏损）
+            PrincipalPnl = PriceRatio - 1.0
+            FinalYield = (TotalCoupons / Notional) + PrincipalPnl
+          endIf
+        endIf
+      
+      # 最终支付：在产品结束日进行最终结算
+      EndDate: |
+        # 按收益率支付（不包含本金，本金在期初已支付）
+        opt pays Notional * FinalYield

@@ -1,0 +1,110 @@
+packages:
+  - name: EarlySnowball
+    structure:
+      buy_sell_field: ""
+      
+      dates:
+        - StartDate
+        - ExpiryDate
+        - EndDate
+      
+      strikes:
+        - ObservationPrice
+      
+      barriers: []
+      
+      ko_barriers: []
+      
+      yields:
+        - HighYield
+        - MidYield
+      
+      percentages:
+        - UpperBarPercentage
+        - LowerBarPercentage
+      
+      arguments:
+        - LockPeriod
+        - HighYieldPeriod
+      
+      amounts:
+        - Notional
+      
+      calendars:
+        - Calendar
+      
+      basis: Act360
+    
+    schedules:
+      - name: KnockOutObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Monthly
+        calendar: "@Calendar"
+        date_adjuster: Following
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+      
+      - name: KnockInObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Daily
+        calendar: "@Calendar"
+        date_adjuster: Actual
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+    
+    payoff:
+      StartDate: |
+        S0 = ObservationPrice
+        UpperBarrier = S0 * UpperBarPercentage
+        LowerBarrier = S0 * LowerBarPercentage
+        IsKnockedOut = 0
+        IsKnockedIn = 0
+        CouponPayment = 0
+        LockPeriod = 0
+        
+      KnockInObservationSchedule: |
+        if (IsKnockedOut = 0 and IsKnockedIn = 0) then
+          if (Spot() <= LowerBarrier) then
+            IsKnockedIn = 1
+          endIf
+        endIf
+        
+      KnockOutObservationSchedule: |
+        MonthsFromStart = t() * 12
+        
+        if (MonthsFromStart >= LockPeriod and IsKnockedOut = 0) then
+          if (Spot() >= UpperBarrier) then
+            IsKnockedOut = 1
+            
+            EarlyPeriodEnd = LockPeriod + HighYieldPeriod
+            if (MonthsFromStart <= EarlyPeriodEnd) then
+              CouponPayment = Notional * (HighYield / 100.0) * t()
+            else
+              CouponPayment = Notional * (MidYield / 100.0) * t()
+            endIf
+          endIf
+        endIf
+      
+      ExpiryDate: |
+        if (IsKnockedOut = 1) then
+          FinalYield = CouponPayment / Notional
+        else 
+          if (IsKnockedIn = 0) then
+            MaturityYears = t()
+            FinalYield = (MidYield / 100.0) * MaturityYears
+          else
+            FinalPrice = Spot()
+            PriceRatio = FinalPrice / S0
+            if (PriceRatio < 0) then
+              PriceRatio = 0
+            endIf
+            FinalYield = PriceRatio - 1.0
+          endIf
+        endIf
+      
+      EndDate: |
+        opt pays Notional * FinalYield

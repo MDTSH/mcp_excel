@@ -1,0 +1,70 @@
+# ============================================================================
+# 欧式简单期权（Vanilla European Option）产品结构定义
+# ============================================================================
+#
+# 产品概述:
+# 欧式期权是一种基础的金融衍生品，持有者有权在到期日以约定的执行价格买入或卖出标的资产。
+# - 观察条件：到期日观察
+# - 支付条件：看涨时 max(到期价格 - 执行价格, 0)，看跌时 max(执行价格 - 到期价格, 0)
+# - 支付方式：到期时按收益结算
+#
+# 典型参数示例:
+#    - 期初价格: 7.0 (USDCNY)
+#    - 执行价格: 100% (StrikePercentage)
+#    - 期权类型: Call=0, Put=1 (CallPut)
+#    - 名义金额: 10,000 (Notional)
+#
+# ============================================================================
+
+packages:
+  - name: VanillaOption
+    structure:
+      buy_sell_field: BuySell
+      
+      dates:
+        - StartDate
+        - EndDate
+        - ExpiryDate
+        - PremiumDate
+      
+      strikes:
+        - ObservationPrice
+      
+      barriers: []
+      
+      ko_barriers: []
+      
+      yields: []
+      
+      percentages:
+        - StrikePercentage
+      
+      arguments:
+        - CallPut
+      
+      amounts:
+        - Notional
+      
+      calendars:
+        - Calendar
+      
+      basis: Act365Fixed
+    
+    schedules: []
+    
+    payoff:
+      StartDate: |
+        S0 = ObservationPrice
+        K = S0 * StrikePercentage
+        return = 0
+
+      
+      ExpiryDate: |        
+        if (CallPut = 0) then
+          return = max(Spot() - K, 0) 
+        else
+          return = max(K - Spot(), 0) 
+        endIf
+      
+      EndDate: |
+        opt pays return * Notional

@@ -12,6 +12,8 @@
 
 数据：`data/XCCY_BASIS_CURVE_SAMPLE.json`（相对工作簿，经 `McpResolvePath`）。主要 Sheet：`KV_Direct`（flat 输入曲线 + Path A2/B + DF/spread 校验）、`FromJson`（同 curve_id 从 JSON 加载）。F9 后可用 `XccyBasisCurveDiscountFactor` / `XccyBasisCurveSpread` 读数；硬校验看 DF / SpotSpr_bp。
 
+> **打开即可用**：请下载 [TC31–TC46 完整案例包](/download/MCP-TC31-46-LiveStoreRawMD.zip)（含全部工作簿和共用的 `data/`）。解压后打开 `zh` 目录里的 xlsx。只下单个工作簿时，必须把包里的 `data` 文件夹放到与 xlsx **同一目录**。
+
 [下载 MCP-TC37-XccyBasis.xlsx](./MCP-TC37-XccyBasis.xlsx)
 
 ## **对象链**

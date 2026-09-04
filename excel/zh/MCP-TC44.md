@@ -8,6 +8,8 @@
 
 **功能描述：** `CNY_BOND_POLICY_SPREAD` = 国债 `CNY_BOND_TREASURY` 相对政策债 `CNY_BOND_POLICY`（均为小样 times_and_rates）。`rawmdBondSpreadSetBenchmark` 必须传入 `MYieldCurve`（样例 `CNYDEPO_BUMP`），不能传 BondCurve。须走 C++ LiveStore / Manager；Python fromJson 无法构建 two_curves。
 
+> **打开即可用**：请下载 [TC31–TC46 完整案例包](/download/MCP-TC31-46-LiveStoreRawMD.zip)（含全部工作簿和共用的 `data/`）。解压后打开 `zh` 目录里的 xlsx。只下单个工作簿时，必须把包里的 `data` 文件夹放到与 xlsx **同一目录**。
+
 [下载 MCP-TC44-BondSpreadCurve.xlsx](./MCP-TC44-BondSpreadCurve.xlsx)
 
 ## **对象链**

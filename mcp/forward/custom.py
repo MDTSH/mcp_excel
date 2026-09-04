@@ -756,7 +756,7 @@ class McpCustomForward(McpVanillaCompound):
             self.accCurve = args[11]
             self.undCurve = args[12]
         else:
-            logging.info(f"Invalid args length: {len(args)}, {args}")
+            #logging.info(f"Invalid args length: {len(args)}, {args}")
             raise Exception(f"Invalid args length: {len(args)}")
 
         if self.undDayCounter == DayCounter.NONE:
@@ -815,10 +815,27 @@ class McpCustomForward(McpVanillaCompound):
                 # self.strikes.append(barrier + 0.00001)
                 rebate = 0.0
                 pricing_method = PricingMethod.BLACKSCHOLES
+                # arg_leg = [gfd_leg.call_put, gfd_leg.leg_type, self.referenceDate, spot_leg,
+                #            gfd_leg.buy_sell, self.expiryDate, self.settlementDate, strike, barrier,
+                #            acc_rate, und_rate, vol, rebate, leverage * self.notional, pricing_method,
+                #            MAdjustmentTable(), False, self.calendar, self.dayCounter]
+                premium_date = self.calendar.ValueDate(self.referenceDate)
+                # 确保 premium_date 不晚于 settlementDate，避免 C++ 代码报错
+                # 如果 premium_date 晚于 settlementDate，使用 settlementDate 作为 premium_date
+                try:
+                    # mcp_utils 中已导入 pandas as pd，通过 * 导入已可用
+                    import pandas as pd
+                    premium_dt = pd.to_datetime(premium_date)
+                    settlement_dt = pd.to_datetime(self.settlementDate)
+                    if premium_dt > settlement_dt:
+                        premium_date = self.settlementDate
+                except Exception:
+                    # 如果日期比较失败，使用 settlementDate 作为 fallback
+                    premium_date = self.settlementDate
                 arg_leg = [gfd_leg.call_put, gfd_leg.leg_type, self.referenceDate, spot_leg,
                            gfd_leg.buy_sell, self.expiryDate, self.settlementDate, strike, barrier,
-                           acc_rate, und_rate, vol, rebate, leverage * self.notional, pricing_method,
-                           MAdjustmentTable(), False, self.calendar, self.dayCounter]
+                           acc_rate, und_rate, vol, leverage * self.notional, rebate,  pricing_method,
+                           0, 0.0,0.0,0.0,0.5826,True,self.calendar, self.dayCounter, premium_date,10000]
                 leg = McpVanillaBarriers(*arg_leg)
             elif gfd_leg.leg_type == 7:
                 fwd = self.get_leg_float_arg(i, FwdDefConst.Field_Forward)

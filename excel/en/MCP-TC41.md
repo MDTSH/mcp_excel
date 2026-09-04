@@ -8,6 +8,8 @@ TRC means **TrippleRangesCall**. Load `EURUSD_LOCALVOL` with `mdlsGetLocalVol`, 
 
 **What it does:** LiveStore returns LocalVol and the discount curve; TRC定价 fills SDP fields (YAML relative path) and shows XssPrice / XssPV. Default 2000 MC paths — F9 may take tens of seconds.
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC41-TRCLocalVol.xlsx](./MCP-TC41-TRCLocalVol.xlsx)
 
 ## **Object chain**

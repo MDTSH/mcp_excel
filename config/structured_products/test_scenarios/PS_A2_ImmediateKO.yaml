@@ -1,0 +1,90 @@
+# ============================================================================
+# PS-A2: 第1个观察日立刻KO（Immediate Knock-Out at First Observation）
+# ============================================================================
+# 
+# 测试目标：验证第1个观察日立刻敲出场景下的现金流和状态机
+# - 路径恒定 S_t = S_0（通过设置σ=0实现）
+# - UpperBarPercentage 设置得足够低，使得第一个观察日 spot >= KO价格
+# - 第一个观察日的KO价格 = InitialPrice * UpperBarPercentage * (1 - KnockOutStepAdjustment * 0)
+#   = 100 * 0.95 = 95
+# - spot = 100 >= 95，因此第一个观察日就会KO
+# 
+# 预期结果：
+# - IsKnockedOut=1、IsKnockedIn=0
+# - 只产生一次"立即支付"现金流（在触发观察日，不是EndDate）
+# - EndDate不再支付（因为IsKnockedOut=1）
+# - P_KO≈1，且KO观察序号恒为1
+# ============================================================================
+
+test_scenario:
+  name: "PS-A2: Immediate KO at First Observation"
+  product_id: "ProtectedSnowball"
+  description: "验证第1个观察日立刻敲出场景下的现金流和状态机"
+  
+  # 确定性路径设置（σ=0，恒定价格）
+  path_type: "deterministic"
+  volatility: 0.0
+  spot_path: "constant"
+  spot_value: 100.0
+  
+  # 产品参数
+  parameters:
+    InitialPrice: 100.0
+    ObservationPrice: 100.0
+    UpperBarPercentage: 0.95  # 95%，第一个观察日KO价格=95，spot=100>=95会KO
+    LowerBarPercentage: 0.80  # 80%，永不KI（spot=100 > 80）
+    KnockOutReturnRate: 0.18
+    DividendCouponRate: 0.20
+    MinReturnRate: 0.02
+    KnockInMinReturnRate: -0.20
+    StrikePercentage: 1.0
+    ParticipationRate: 1.0
+    KnockOutStepAdjustment: 0.005
+    Notional: 1000000.0
+    BuySell: "Sell"
+  
+  # 日期设置
+  dates:
+    ReferenceDate: "2026/1/26"
+    StartDate: "2026/1/26"
+    ObservationStartDate: "2026/2/5"
+    ExpiryDate: "2027/1/26"
+    EndDate: "2027/1/28"
+    PremiumDate: "2026/1/26"
+  
+  # 市场参数
+  market:
+    RiskFreeRate: 0.03
+    Dividend: 0.0
+    Volatility: 0.0  # 确定性场景，零波动
+    DayCounter: "Act365Inclusive"
+  
+  # 模拟参数
+  simulation:
+    num_simulations: 1000  # 确定性场景可以用较少模拟次数
+    seed: 12345
+    use_deterministic_path: true  # 关键：使用确定性路径
+  
+  # 预期结果（断言）
+  assertions:
+    P_KO:
+      expected: 1.0
+      tolerance: 0.01
+      description: "敲出概率应为1（所有路径都在第一个观察日KO）"
+    P_KI:
+      expected: 0.0
+      tolerance: 0.01
+      description: "敲入概率应为0"
+    IsKnockedOut:
+      expected: 1
+      description: "最终状态：已敲出"
+    IsKnockedIn:
+      expected: 0
+      description: "最终状态：未敲入"
+    FinalCashflow:
+      expected: 0.0  # EndDate不再支付，因为已KO
+      tolerance: 1000.0
+      description: "EndDate不应支付（因为已KO）"
+    CashflowDates:
+      expected: []  # 现金流在KO观察日支付，不在EndDate
+      description: "现金流在KO观察日支付，不在EndDate"

@@ -8,6 +8,8 @@ Load a bond-spread curve from a JSON `two_curves` entry, read `zeroSpread`, then
 
 **What it does:** `CNY_BOND_POLICY_SPREAD` = treasury `CNY_BOND_TREASURY` vs policy `CNY_BOND_POLICY` (small times_and_rates samples). `rawmdBondSpreadSetBenchmark` requires an `MYieldCurve` (`CNYDEPO_BUMP`), not a BondCurve. Use C++ LiveStore / Manager; Python fromJson cannot build two_curves.
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC44-BondSpreadCurve.xlsx](./MCP-TC44-BondSpreadCurve.xlsx)
 
 ## **Object chain**

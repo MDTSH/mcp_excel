@@ -5,6 +5,8 @@
 
 Directory mode: point to a folder containing `MCP_MARKET_DATA_YYYYMMDD.json` files.
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC32-RawMarketManager.xlsx](./MCP-TC32-RawMarketManager.xlsx)
 
 ## **Object chain**

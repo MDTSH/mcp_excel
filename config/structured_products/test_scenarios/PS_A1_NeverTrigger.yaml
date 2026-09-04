@@ -1,0 +1,78 @@
+# ============================================================================
+# PS-A1: 永不触发场景（Never Trigger - No KO, No KI）
+# ============================================================================
+# 
+# 测试目标：验证永不触发场景下的现金流和状态机
+# - 路径恒定 S_t = S_0（通过设置σ=0实现）
+# - UpperBarPercentage > 1（103%），永不KO
+# - LowerBarPercentage < 1（80%），永不KI
+# 
+# 预期结果：
+# - IsKnockedOut=0、IsKnockedIn=0
+# - 仅在EndDate支付：Notional * (DividendCouponRate + MinReturnRate) * t()
+# - P_KO≈0，P_KI≈0
+# ============================================================================
+
+test_scenario:
+  name: "PS-A1: Never Trigger (No KO, No KI)"
+  product_id: "ProtectedSnowball"
+  description: "验证永不触发场景下的现金流和状态机"
+  
+  # 确定性路径设置（σ=0，恒定价格）
+  path_type: "deterministic"
+  volatility: 0.0
+  spot_path: "constant"
+  spot_value: 100.0
+  
+  # 产品参数
+  parameters:
+    InitialPrice: 100.0
+    ObservationPrice: 100.0
+    UpperBarPercentage: 1.03  # 103%，永不KO
+    LowerBarPercentage: 0.80  # 80%，永不KI
+    KnockOutReturnRate: 0.18
+    DividendCouponRate: 0.20
+    MinReturnRate: 0.02
+    KnockInMinReturnRate: -0.20
+    StrikePercentage: 1.0
+    ParticipationRate: 1.0
+    KnockOutStepAdjustment: 0.005
+    Notional: 1000000.0
+    BuySell: "Sell"
+  
+  # 日期设置
+  dates:
+    ReferenceDate: "2026/1/26"
+    StartDate: "2026/1/26"
+    ObservationStartDate: "2026/2/5"
+    ExpiryDate: "2027/1/26"
+    EndDate: "2027/1/28"
+    PremiumDate: "2026/1/26"
+  
+  # 市场参数
+  market:
+    RiskFreeRate: 0.03
+    Dividend: 0.0
+    Volatility: 0.0  # 确定性场景，零波动
+    DayCounter: "Act365Inclusive"
+  
+  # 模拟参数
+  simulation:
+    num_simulations: 1000  # 确定性场景可以用较少模拟次数
+    seed: 12345
+    use_deterministic_path: true  # 关键：使用确定性路径
+  
+  # 预期结果（断言）
+  assertions:
+    P_KO:
+      expected: 0.0
+      tolerance: 0.01
+      description: "敲出概率应为0"
+    P_KI:
+      expected: 0.0
+      tolerance: 0.01
+      description: "敲入概率应为0"
+    FinalCashflow:
+      expected: 220000.0  # Notional * (DividendCouponRate + MinReturnRate) * t()
+      tolerance: 10000.0
+      description: "最终现金流应为红利票息+最低收益（考虑折现）"

@@ -1,0 +1,125 @@
+# ============================================================================
+# Price-It KickOut —— Sharp / 对照组（实验用）
+# ============================================================================
+#
+# 本文件是 PriceItKickOut.yaml 的**对照组**，业务逻辑（payoff / schedule /
+# structure）完全相同；唯一差异在新增的 pricing_config 节点，用来验证
+# fuzzy 评估、随机数源等数值方法对最终价格的影响。
+#
+# 使用方式：
+#   1. 同时加载 PriceItKickOut.yaml 和 PriceItKickOut_Sharp.yaml
+#      （两者 package name 不同，互不覆盖）
+#   2. 在 Excel/Python 端构造两个 SDP：
+#        SDP_A = PackageName="PriceItKickOut"        # fuzzy=true（默认）
+#        SDP_B = PackageName="PriceItKickOut_Sharp"  # fuzzy=false
+#      其它入参（LocalVol / Notional / 日期 / OptionFee ...）完全一致
+#   3. 对比 PV / Price / KnockoutProb 等指标
+#
+# KnockoutMaturity 对齐 Price-it（PaymentGap=2b）：
+#   KOT = (daysBetween(StartDate, ObsDate) + 2) / 360
+#   对应 Price-it: DCF(StartDate, PE()+PaymentGap, Actual/360)
+#
+# 注意：
+#   - num_simulation 设为 50000 以降低 MC 噪声（约 0.5% 内）
+#   - seed 固定 42，便于多次运行复现
+#   - random_source 仍用 Pseudo（Sobol 当前与 Dupire dim()=myPath*2 有兼容问题）
+# ============================================================================
+
+packages:
+  - name: PriceItKickOut_Sharp     # 与原产品同结构、不同名，便于并存
+
+    # ====== 新增：定价数值方法配置（仅本节点是新增内容）======
+    pricing_config:
+      # MC 路径
+      num_simulation: 50000        # 比默认 10000 多 5×，把 MC 噪声压到 ~0.5%
+      random_source: "Pseudo"      # Pseudo | Sobol | Halton（暂保持 Pseudo）
+      seed: 42                     # 固定种子便于复现；0 = 系统时间
+
+      # Fuzzy 条件平滑（关键开关）
+      fuzzy: false                 # ← 关掉 fuzzy，所有 if 走 sharp 评估
+      fuzzy_epsilon: 0.0001        # 仅在 fuzzy=true 时生效，这里保留默认值
+      skip_domains: true           # fuzzy=false 时配合 skip_domains=true
+
+      # 其余字段保持默认
+      log_level: "off"
+      compile: true
+
+    # ====== 以下与 PriceItKickOut.yaml 完全相同 ======
+    structure:
+      buy_sell_field: ""
+
+      dates:
+        - StartDate         # 合约起始日（可在 AsOfDate 之前）
+        - ExpiryDate        # 最后观察日
+        - EndDate           # 支付日（= OptionFeeDate = PayoffDate）
+
+      strikes:
+        - BarrierLevel      # 敲出绝对价格水平
+
+      barriers: []
+      ko_barriers: []
+      yields: []
+      percentages: []
+
+      arguments:
+        - HigherRate        # 敲出年化票息率（小数）
+        - LowerRate         # 未敲出年化票息率（小数）
+        - OptionFeePayRcv   # 期权费收付方向：1=Receive, -1=Pay
+        - FloatingPayRcv    # 浮动端方向：1=Receive, -1=Pay
+        - BarrierType       # 0=CALL(Spot>=Barrier), 1=PUT(Spot<=Barrier)
+
+      amounts:
+        - Notional
+        - OptionFee
+
+      calendars:
+        - Calendar
+
+      basis: Act360
+
+    schedules:
+      - name: ObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Monthly
+        calendar: "@Calendar"
+        date_adjuster: ModifiedFollowing
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+
+    payoff:
+      StartDate: |
+        IsKnockedOut = 0
+        CouponPayment = 0
+
+      ObservationSchedule: |
+        if (IsKnockedOut = 0) then
+          if (BarrierType = 0) then
+            if (Spot() >= BarrierLevel) then
+              IsKnockedOut = 1
+              KOT = daysBetween("@StartDate", currentDate()) / 360.0
+              CouponPayment = Notional * HigherRate * KOT
+            endIf
+          else
+            if (Spot() <= BarrierLevel) then
+              IsKnockedOut = 1
+              KOT = daysBetween("@StartDate", currentDate()) / 360.0
+              CouponPayment = Notional * HigherRate * KOT
+            endIf
+          endIf
+        endIf
+
+      EndDate: |
+        FinalT = daysBetween("@StartDate", "@EndDate") / 360.0
+        KnockoutCoupon = IsKnockedOut * CouponPayment
+        SurvivalCoupon = (1 - IsKnockedOut) * Notional * LowerRate * FinalT
+        opt           pays FloatingPayRcv * (KnockoutCoupon + SurvivalCoupon)
+        fee           pays OptionFeePayRcv * OptionFee
+        df            pays 1
+        IndexSpotPV   pays Spot()
+        Knockout      pays IsKnockedOut / df
+        Alive         pays (1 - IsKnockedOut) / df
+        KnockoutProb  pays IsKnockedOut / df
+        IndexSpotEnd  pays Spot() / df
+        AnnualizedYield pays (IsKnockedOut * HigherRate + (1 - IsKnockedOut) * LowerRate) / df

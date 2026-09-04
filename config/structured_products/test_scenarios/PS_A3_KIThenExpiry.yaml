@@ -1,0 +1,86 @@
+# ============================================================================
+# PS-A3: 先KI后到期（不KO）（Knock-In Then Expiry, No KO）
+# ============================================================================
+# 
+# 测试目标：验证先敲入后到期场景下的现金流和状态机
+# - 路径恒定 S_t = S_0（通过设置σ=0实现）
+# - LowerBarPercentage 设置得足够高，使得第一个观察日 spot=100 <= LowerBarrier 触发KI
+# - UpperBarPercentage 设置得足够高，使得所有观察日都不KO
+# - 到期时给定一个价格（如90），走"未敲出已敲入"分支
+# 
+# 预期结果：
+# - IsKnockedOut=0、IsKnockedIn=1
+# - IsKnockedIn一旦变1永不回到0
+# - 到期走"未敲出已敲入"分支：
+#   FinalYield = Max(KnockInMinReturnRate, Min(0, (FinalPrice-StrikePrice)/S0)*ParticipationRate) + MinReturnRate * t()
+# - 只在EndDate支付一次 Notional * FinalYield
+# ============================================================================
+
+test_scenario:
+  name: "PS-A3: KI Then Expiry (No KO)"
+  product_id: "ProtectedSnowball"
+  description: "验证先敲入后到期场景下的现金流和状态机"
+  
+  # 确定性路径设置（σ=0，恒定价格）
+  path_type: "deterministic"
+  volatility: 0.0
+  spot_path: "constant"
+  spot_value: 100.0
+  
+  # 产品参数
+  parameters:
+    InitialPrice: 100.0
+    ObservationPrice: 100.0
+    UpperBarPercentage: 1.10  # 110%，KO价格=110，spot=100<110，永不KO
+    LowerBarPercentage: 1.00  # 100%，KI价格=100，spot=100<=100，会KI
+    KnockOutReturnRate: 0.18
+    DividendCouponRate: 0.20
+    MinReturnRate: 0.02
+    KnockInMinReturnRate: -0.20  # 敲入最低基准收益率（保护）
+    StrikePercentage: 1.0
+    ParticipationRate: 1.0
+    KnockOutStepAdjustment: 0.005
+    Notional: 1000000.0
+    BuySell: "Sell"
+  
+  # 日期设置
+  dates:
+    ReferenceDate: "2026/1/26"
+    StartDate: "2026/1/26"
+    ObservationStartDate: "2026/2/5"
+    ExpiryDate: "2027/1/26"
+    EndDate: "2027/1/28"
+    PremiumDate: "2026/1/26"
+  
+  # 市场参数
+  market:
+    RiskFreeRate: 0.03
+    Dividend: 0.0
+    Volatility: 0.0  # 确定性场景，零波动
+    DayCounter: "Act365Inclusive"
+  
+  # 模拟参数
+  simulation:
+    num_simulations: 1000  # 确定性场景可以用较少模拟次数
+    seed: 12345
+    use_deterministic_path: true  # 关键：使用确定性路径
+  
+  # 预期结果（断言）
+  assertions:
+    P_KO:
+      expected: 0.0
+      tolerance: 0.01
+      description: "敲出概率应为0（所有路径都不KO）"
+    P_KI:
+      expected: 1.0
+      tolerance: 0.01
+      description: "敲入概率应为1（所有路径都KI）"
+    IsKnockedOut:
+      expected: 0
+      description: "最终状态：未敲出"
+    IsKnockedIn:
+      expected: 1
+      description: "最终状态：已敲入"
+    FinalCashflow:
+      expected_range: [-200000.0, 50000.0]  # 考虑敲入保护后的范围
+      description: "最终现金流应为敲入收益+最低收益（考虑折现）"

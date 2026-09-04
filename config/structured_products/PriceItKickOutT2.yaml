@@ -1,0 +1,172 @@
+# ============================================================================
+# Price-It 风格 Knock-Out 自动赎回产品 —— T+2 精确支付版本
+# ============================================================================
+#
+# 与 PriceItKickOut.yaml 的差异：
+#   ─────────────────────────────────────────────────────────────────────────
+#   简化版 (PriceItKickOut.yaml)：所有现金流统一在 EndDate 折现
+#     ── 优点：YAML 简单、Excel 端只需 observationschedule/dates
+#     ── 缺点：敲出当期实际 T+2 支付被合并到 EndDate，折现误差最多 ~产品期限
+#
+#   T+2 精确版 (本文件)：敲出当期立即按 T+2 折现
+#     ── 把 ObservationSchedule（观察）与 PaymentSchedule（支付）拆开
+#     ── PaymentSchedule 上的 `opt pays …` 会用当日 numeraire 折现
+#        （引擎实现见 mcp-xScript/scriptingEvaluator.h:303-313）
+#     ── Excel 端用 CalendarAddBusinessDays 把每个观察日 +2b 算出后，
+#        通过 `paymentschedule/dates = ["YYYYMMDD", ...]` 显式传入
+#
+# T+2 支付实现原理：
+#   ─────────────────────────────────────────────────────────────────────────
+#   xScript 引擎对 `var pays expr` 的执行：
+#     myVariables[var] += expr * (*myScenario)[myCurEvt].numeraire
+#   即"在当前事件日按该日 numeraire (DF) 折现累加"。
+#   故：
+#     • 敲出判定 → ObservationSchedule(t_i)
+#     • 实际支付 → PaymentSchedule(t_i+2b)
+#   则敲出现金流就以 DF(0, t_i+2b) 折现，与 Price-It T+2 完全一致。
+#
+# Excel 端配套参数（必须）：
+#   ─────────────────────────────────────────────────────────────────────────
+#   observationschedule/dates = ["20250509","20250516","20250523"]
+#   paymentschedule/dates     = ["20250513","20250520","20250527"]
+#       （每个 = 对应观察日 +2 个营业日；用 CalendarAddBusinessDays 算）
+#
+# pricing_config（本文件已配置）：
+#   fuzzy=false, seed=42, num_simulation=50000 — 对齐 Price-it sharp 判定
+#
+# 历史 Fixing：
+#   ─────────────────────────────────────────────────────────────────────────
+#   通过 FixingDates / FixingRates 注入；对 AsOfDate 之前的观察日，引擎自动
+#   用 fixing 替代 MC spot。同样会触发支付（如果 PaymentSchedule 已过 AsOf
+#   则只是历史现金流，numeraire ~ DF(0, t_i+2b)）。
+#
+# 与 PriceItKickOut 字段完全兼容：
+#   StartDate / ExpiryDate / EndDate / BarrierLevel / BarrierType
+#   HigherRate / LowerRate / Notional / OptionFee / OptionFeePayRcv /
+#   FloatingPayRcv 的语义与简化版完全一致，可直接复用 Excel 配置。
+#
+# 期权费（对齐 Price-it dealDescription）：
+#   不在 StartDate 一次性付；仅在敲出当期 PaymentSchedule（T+2）上
+#   fee pays OptionFeePayRcv * OptionFee（等价于 KnockoutProb[t]=1 时付全额）
+#   未敲出路径不付期权费 → NPV = PV + fee 与 Price-it 一致
+# ============================================================================
+
+packages:
+  - name: PriceItKickOutT2
+
+    # MC 数值方法：关 fuzzy，与 Price-it sharp 判定对齐
+    pricing_config:
+      num_simulation: 50000
+      random_source: "Pseudo"
+      seed: 42
+      fuzzy: false
+      fuzzy_epsilon: 0.0001
+      skip_domains: true
+      log_level: "trace"   # HmReport 需要 Trace；重编 _mcp 后可删此行，改由 Excel LogLevel 控制
+      compile: true
+
+    structure:
+      buy_sell_field: ""
+
+      dates:
+        - StartDate         # 合约起始日
+        - ExpiryDate        # 最后观察日
+        - EndDate           # 兜底支付日（未敲出走到期）
+
+      strikes:
+        - BarrierLevel
+
+      barriers: []
+      ko_barriers: []
+      yields: []
+      percentages: []
+
+      arguments:
+        - HigherRate        # 敲出年化票息率（小数）
+        - LowerRate         # 未敲出年化票息率（小数）
+        - OptionFeePayRcv   # 1=Receive, -1=Pay
+        - FloatingPayRcv    # 1=Receive, -1=Pay
+        - BarrierType       # 0=CALL(>=), 1=PUT(<=)
+
+      amounts:
+        - Notional
+        - OptionFee
+
+      calendars:
+        - Calendar
+
+      basis: Act360
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 两个 schedule：观察 + 支付
+    # frequency 字段是占位（必须给）；实际日期均由 Excel 端 dates 覆盖
+    # ──────────────────────────────────────────────────────────────────────
+    schedules:
+      - name: ObservationSchedule          # 观察日（判断是否敲出）
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Monthly                 # 占位；建议 Excel 端 override
+        calendar: "@Calendar"
+        date_adjuster: ModifiedFollowing
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+
+      - name: PaymentSchedule              # 支付日（= 观察日 +2b）
+        start: "@StartDate"
+        end: "@EndDate"
+        frequency: Monthly                 # 占位；Excel 端必须 override
+        calendar: "@Calendar"
+        date_adjuster: ModifiedFollowing
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Payoff
+    # ──────────────────────────────────────────────────────────────────────
+    payoff:
+      StartDate: |
+        IsKnockedOut   = 0
+        IsPaid         = 0
+        KnockoutCoupon = 0
+
+      ObservationSchedule: |
+        if (IsKnockedOut = 0) then
+          if (BarrierType = 0) then
+            if (Spot() >= BarrierLevel) then
+              IsKnockedOut = 1
+            endIf
+          else
+            if (Spot() <= BarrierLevel) then
+              IsKnockedOut = 1
+            endIf
+          endIf
+        endIf
+
+      # KOT 必须在 PaymentSchedule 上算：currentDate() = ObsDate + 2b（由 Excel 传入）
+      # 对应 Price-it: DCF(StartDate, PE()+PaymentGap, Actual/360)
+      PaymentSchedule: |
+        if (IsKnockedOut = 1 and IsPaid = 0) then
+          KOT            = daysBetween("@StartDate", currentDate()) / 360.0
+          KnockoutCoupon = Notional * HigherRate * KOT
+          opt pays FloatingPayRcv * KnockoutCoupon
+          # Price-it: NPV += OptionFeePayRcv * KnockoutProb[t] * OptionFee
+          # 单路径敲出时 KnockoutProb=1；未敲出路径全程不付 fee
+          fee pays OptionFeePayRcv * OptionFee
+          IsPaid = 1
+        endIf
+
+      # 未敲出走到期支付（保留 EndDate 折现的 LowerRate）
+      # 同时这里输出诊断 collectors（与简化版兼容）
+      EndDate: |
+        FinalT          = daysBetween("@StartDate", "@EndDate") / 360.0
+        SurvivalCoupon  = (1 - IsKnockedOut) * Notional * LowerRate * FinalT
+        opt pays FloatingPayRcv * SurvivalCoupon
+        df              pays 1
+        IndexSpotPV     pays Spot()
+        Knockout        pays IsKnockedOut / df
+        Alive           pays (1 - IsKnockedOut) / df
+        KnockoutProb    pays IsKnockedOut / df
+        IndexSpotEnd    pays Spot() / df
+        AnnualizedYield pays (IsKnockedOut * HigherRate + (1 - IsKnockedOut) * LowerRate) / df

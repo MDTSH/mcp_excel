@@ -8,6 +8,8 @@ Load `FXVolSurface2` from a standard `MCP_MARKET_DATA` JSON via LiveStore, then 
 
 **What it does:** Config holds the relative snapshot path and trade fields; LiveStore returns the surface object; FXO定价 builds the option and shows Price / PV / Spot / Vol / Delta.
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC40-FXVanillaLiveStore.xlsx](./MCP-TC40-FXVanillaLiveStore.xlsx)
 
 ## **Object chain**

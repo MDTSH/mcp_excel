@@ -8,6 +8,8 @@ Load a trimmed non-FX volatility surface, then read with existing `VolSurfaceGet
 
 **What it does:** `EQ_VOL_SAMPLE` is a 2-expiry × 5-strike grid (`UsingImpVols`, depends on `CNYDEPO`). `ExpiryDates` must be the same length as `Strikes` (one row per point). This is not `FXVolSurface2` (P0/TC40).
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC46-VolSurface.xlsx](./MCP-TC46-VolSurface.xlsx)
 
 ## **Object chain**

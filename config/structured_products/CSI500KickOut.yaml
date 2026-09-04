@@ -1,0 +1,111 @@
+# ============================================================================
+# CSI500 月度敲出看涨产品（Knock-out Autocall on CSI500 Index）
+# ============================================================================
+#
+# 产品概述:
+#   标的指数: CSI500
+#   敲出类型: CALL 型（当 IndexSpot >= BarrierLevel 时敲出）
+#   观察方式: 月度观察（可通过 observationschedule/dates 传入自定义日期列表）
+#   敲出收益: FloatingPayRcv * Notional * HigherRate * DCF(StartDate, ObsDate, Act/360)
+#   未敲出:   FloatingPayRcv * Notional * LowerRate  * DCF(StartDate, EndDate, Act/360)
+#             （LowerRate=0 时为零，仅取回本金，本产品 payoff 不含本金返还）
+#   期权费:   OptionFeePayRcv * OptionFee（在 EndDate 统一支付，无论是否敲出）
+#
+# 合约典型参数（Price-It 样例）:
+#   StartDate:       2022-11-15（合约起始，可能在 AsOfDate 之前）
+#   ExpiryDate:      2023-02-15（最后观察日）
+#   EndDate:         2023-02-17（支付日 = OptionFeeDate = PayoffDate）
+#   BarrierLevel:    6000       （CSI500 绝对价格水平）
+#   Notional:        100,000,000 CNY
+#   HigherRate:      0.05       （5% 年化，小数形式）
+#   LowerRate:       0.0        （未敲出时无票息）
+#   OptionFee:       200,000 CNY
+#   OptionFeePayRcv: -1         （Pay：定价方付出期权费）
+#   FloatingPayRcv:  1          （Receive：定价方收取敲出票息）
+#
+# 传参说明（Excel / Python）:
+#   - observationschedule/dates: 自定义月度观察日 JSON 数组
+#     例: ["20221215","20230115","20230215"]
+#     不传则按 YAML schedules 中 Monthly 频率自动生成。
+#   - FixingDates / FixingRates: 历史 CSI500 收盘价数组
+#     对 AsOfDate 之前的观察日，引擎用 Fixing 替代 MC 模拟值。
+#     至少需提供第一观察日（2022-12-15）的收盘价。
+#   - InitialPrice (=Spot): AsOfDate 时的 CSI500 点位，MC 模拟起始价格。
+#
+# 简化说明:
+#   1. 所有现金流统一在 EndDate（支付日）发起 opt pays，
+#      避免多期 payment timing 偏差（各期实际支付日差 2b ≈ 2-3 天）。
+#   2. KOT = daysBetween(StartDate, ObsDate) / 360.0
+#      ≈ KnockoutMaturity = DCF(StartDate, ObsDate+2b, Act/360)，
+#      误差约 2-3 天，对短期产品影响极小。
+#   3. t() 从 ReferenceDate（AsOfDate）起算；payoff 中用 daysBetween 做
+#      精确 Act/360 计算，不依赖 t()。
+# ============================================================================
+
+packages:
+  - name: CSI500KickOut
+    structure:
+      buy_sell_field: ""
+
+      dates:
+        - StartDate      # 合约起始日（可在 AsOfDate 之前）
+        - ExpiryDate     # 最后观察日（ObservationSchedule 终止日）
+        - EndDate        # 支付日（= OptionFeeDate = PayoffDate）
+
+      strikes:
+        - BarrierLevel   # 敲出绝对价格水平（如 6000）
+
+      barriers: []
+      ko_barriers: []
+      yields: []
+      percentages: []
+
+      arguments:
+        - HigherRate       # 敲出年化票息率（小数，如 0.05）
+        - LowerRate        # 未敲出年化票息率（小数，如 0）
+        - OptionFeePayRcv  # 期权费收付方向：1=收, -1=付
+        - FloatingPayRcv   # 浮动端收付方向：1=收, -1=付
+
+      amounts:
+        - Notional         # 名义本金（如 100,000,000 CNY）
+        - OptionFee        # 期权费金额（如 200,000 CNY）
+
+      calendars:
+        - Calendar
+
+      basis: Act360
+
+    schedules:
+      - name: ObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Monthly
+        calendar: "@Calendar"
+        date_adjuster: ModifiedFollowing
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+
+    payoff:
+      StartDate: |
+        IsKnockedOut = 0
+        CouponPayment = 0
+
+      ObservationSchedule: |
+        if (IsKnockedOut = 0) then
+          if (Spot() >= BarrierLevel) then
+            IsKnockedOut = 1
+            KOT = daysBetween("@StartDate", currentDate()) / 360.0
+            CouponPayment = Notional * HigherRate * KOT
+          endIf
+        endIf
+
+      EndDate: |
+        FinalT = daysBetween("@StartDate", "@EndDate") / 360.0
+        KnockoutCoupon = IsKnockedOut * CouponPayment
+        SurvivalCoupon = (1 - IsKnockedOut) * Notional * LowerRate * FinalT
+        FeePayment = OptionFeePayRcv * OptionFee
+        TotalPayoff = FloatingPayRcv * (KnockoutCoupon + SurvivalCoupon) + FeePayment
+        opt pays TotalPayoff
+        KnockoutProb pays IsKnockedOut
+        AnnualizedYield pays (IsKnockedOut * HigherRate + (1 - IsKnockedOut) * LowerRate)

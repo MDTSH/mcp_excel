@@ -11,6 +11,8 @@ Same valuation date: build cross FX forward-points curve `CNHTHB_FXFP_CROSS_2` t
 
 Data: `data/market_data/MCP_MARKET_DATA_20260626.json`. Key sheets: `Config` (paths / date / Manager), `PillarData` (pillars for Direct VP), `Compare_YC2` / `Compare_FXFP2` / `Compare_Cross2` (RawMD vs Direct), `Curve_From2` (GetCurve vs MidFrom2). After F9, same-tenor diffs should be near zero.
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC35-CrossFXFP2RawMDvsDirect.xlsx](./MCP-TC35-CrossFXFP2RawMDvsDirect.xlsx)
 
 ## **Object chain**

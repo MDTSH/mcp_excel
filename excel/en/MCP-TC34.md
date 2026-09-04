@@ -5,6 +5,8 @@
 
 Read-only single-file load; same JSON as LiveStore; **no patch**.
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC34-MarketDataJsonReader.xlsx](./MCP-TC34-MarketDataJsonReader.xlsx)
 
 ## **Object chain**

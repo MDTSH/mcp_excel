@@ -1,0 +1,74 @@
+# ============================================================================
+# PS-C1: 路径数收敛（N-scan Convergence Test）
+# ============================================================================
+# 
+# 测试目标：验证MC模拟的收敛性
+# - 固定一组"中等触发概率"的参数
+# - 取N = 50k, 100k, 200k, 400k, 800k（每个N用同一seed策略）
+# - 断言/输出：
+#   - PV的SE应近似按1/√N缩小
+#   - P_KO、P_KI的估计也应收敛且波动范围收窄
+# 
+# 预期结果：
+# - PV的标准误差应随N增大而按1/√N缩小
+# - P_KO和P_KI的估计值应收敛
+# ============================================================================
+
+test_scenario:
+  name: "PS-C1: N-scan Convergence Test"
+  product_id: "ProtectedSnowball"
+  description: "验证MC模拟的路径数收敛性"
+  
+  # 使用真实波动率（非零），测试MC收敛性
+  path_type: "convergence"
+  volatility: 0.20  # 20%波动率，中等触发概率
+  spot_path: "stochastic"  # 随机路径
+  
+  # 产品参数（中等触发概率）
+  parameters:
+    InitialPrice: 100.0
+    ObservationPrice: 100.0
+    UpperBarPercentage: 1.03  # 103%，中等KO概率
+    LowerBarPercentage: 0.80  # 80%，中等KI概率
+    KnockOutReturnRate: 0.18
+    DividendCouponRate: 0.20
+    MinReturnRate: 0.02
+    KnockInMinReturnRate: -0.20
+    StrikePercentage: 1.0
+    ParticipationRate: 1.0
+    KnockOutStepAdjustment: 0.005
+    Notional: 1000000.0
+    BuySell: "Sell"
+  
+  # 日期设置
+  dates:
+    ReferenceDate: "2026/1/26"
+    StartDate: "2026/1/26"
+    ObservationStartDate: "2026/2/5"
+    ExpiryDate: "2027/1/26"
+    EndDate: "2027/1/28"
+    PremiumDate: "2026/1/26"
+  
+  # 市场参数
+  market:
+    RiskFreeRate: 0.03
+    Dividend: 0.0
+    Volatility: 0.20  # 20%波动率
+    DayCounter: "Act365Inclusive"
+  
+  # 模拟参数
+  simulation:
+    num_simulations: [50000, 100000, 200000, 400000, 800000]  # N-scan的N值列表
+    seed: 12345  # 固定seed（或seed策略）
+    use_deterministic_path: false  # 使用随机路径
+    use_crn: false  # N-scan不需要CRN
+  
+  # 预期结果（断言）
+  assertions:
+    convergence_rate:
+      expected: -0.5  # SE应近似按1/√N缩小，即log(SE) vs log(N)的斜率约为-0.5
+      tolerance: 0.1
+      description: "PV标准误差的收敛速率应接近-0.5（1/√N）"
+    pv_stability:
+      expected_range: [0.0, 0.1]  # PV的变异系数应随N增大而减小
+      description: "PV的变异系数应随N增大而减小"

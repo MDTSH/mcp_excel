@@ -5,6 +5,8 @@
 
 Load standard `MCP_MARKET_DATA` JSON into LiveStore, get curve objects via `mdlsGet*`, read rates with `YieldCurve2ZeroRate`; demonstrates patch and Impact.
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC31-LiveStoreMarketData.xlsx](./MCP-TC31-LiveStoreMarketData.xlsx)
 
 ## **Object chain**

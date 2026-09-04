@@ -1,0 +1,221 @@
+# ============================================================================
+# 可转债（ConvertibleBond）Phase A 模板
+# ============================================================================
+# 设计目标：
+# 1) 复用 STRUCTUREDDERIVATIVE + XScriptStructure 管线；
+# 2) 支持强赎/回售/下修/到期择优；
+# 3) 输出统一验收变量（CB_*）供 C++ 测试程序断言。
+#
+# 注意：
+# - 本模板是 Phase A 的“可运行版本”，优先保证稳定接入与回归可测；
+# - 复杂 N/M 计数窗口、发行人行为概率等可在后续 Phase B 扩展。
+# ============================================================================
+
+packages:
+  - name: ConvertibleBond
+    structure:
+      # 买卖方向字段（兼容 ProductFactory 的 BuySell 映射）
+      buy_sell_field: BuySell
+
+      # 关键日期字段（由 ProductFactory / trade.product_fields 映射）
+      # PutStartDate / PutEndDate 用于限定回售触发窗口。
+      dates:
+        - StartDate      # 起息/生效日（条款观察与票息累计起点）
+        - PutStartDate   # 回售窗口开始日（含）
+        - PutEndDate     # 回售窗口结束日（含）
+        - ExpiryDate     # 到期观察/择优计算日
+        - EndDate        # 最终支付日（通常 = ExpiryDate + 结算偏移）
+
+      # Phase A 不使用传统 strike/barrier 定义，统一放到 arguments/percentages/amounts。
+      strikes: []
+      barriers: []
+      ko_barriers: []
+
+      # 收益率类参数（年化票息，建议用小数：1.5% -> 0.015）
+      yields:
+        - AnnualCouponRate   # 票息年化利率（小数）
+
+      # 比例类阈值（建议小数：130% -> 1.30）
+      percentages:
+        - CallTriggerRatio    # 强赎触发比例（触发价=转股价*该比例）
+        - PutTriggerRatio     # 回售触发比例（触发价=转股价*该比例）
+        - ResetTriggerRatio   # 下修触发比例（触发价=转股价*该比例）
+
+      # 其他核心参数：
+      # - ConversionPrice: 当前转股价
+      # - ResetFloorPrice: 下修底价
+      # - ObservationFrequency: 条款观察频率（Monthly/Weekly/...）
+      arguments:
+        - ConversionPrice      # 初始转股价
+        - ResetFloorPrice      # 下修底价（防止转股价无限下修）
+        - ObservationFrequency # 条款观察频率（Monthly/Weekly/...）
+
+      # 金额类参数：
+      # - CallRedemptionPrice: 强赎执行价值（简化）
+      # - PutPrice: 回售执行价值
+      # - MaturityRedemptionPrice: 到期赎回价值（债底）
+      amounts:
+        - Notional                # 名义本金（若 FaceAmount 缺失可回退为该值）
+        - FaceAmount              # 面值（脚本内优先使用；<=0 时回退默认100）
+        - CallRedemptionPrice     # 强赎执行价值
+        - PutPrice                # 回售执行价值
+        - MaturityRedemptionPrice # 到期赎回价值（债底近似）
+
+      # 日历字段
+      calendars:
+        - Calendar
+
+      # 日计数规则（用于引擎内部时间换算）
+      basis: Act365Fixed
+
+    schedules:
+      # 条款观察日程：用于强赎/回售/下修判断
+      - name: ClauseObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: "@ObservationFrequency"
+        calendar: "@Calendar"
+        date_adjuster: Following
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+
+      # 票息累积日程：Phase A 按 Annual 简化处理
+      - name: CouponSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Annual
+        calendar: "@Calendar"
+        date_adjuster: Following
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+
+    payoff:
+      # ----------------------------------------------------------------------
+      # ReferenceDate:
+      # 初始化参数、默认值与状态变量
+      # ----------------------------------------------------------------------
+      ReferenceDate: |
+        FaceAmount = Notional
+        if (FaceAmount <= 0) then
+          FaceAmount = 100
+        endIf
+
+        ConversionPriceCurrent = ConversionPrice
+        if (ConversionPriceCurrent <= 0) then
+          ConversionPriceCurrent = 10
+        endIf
+
+        if (CallTriggerRatio <= 0) then
+          CallTriggerRatio = 1.30
+        endIf
+        if (PutTriggerRatio <= 0) then
+          PutTriggerRatio = 0.70
+        endIf
+        if (ResetTriggerRatio <= 0) then
+          ResetTriggerRatio = 0.85
+        endIf
+        if (CallRedemptionPrice <= 0) then
+          CallRedemptionPrice = 100
+        endIf
+        if (PutPrice <= 0) then
+          PutPrice = 100
+        endIf
+        if (MaturityRedemptionPrice <= 0) then
+          MaturityRedemptionPrice = 110
+        endIf
+        if (ResetFloorPrice <= 0) then
+          ResetFloorPrice = 1
+        endIf
+
+        CallTriggerPrice = ConversionPriceCurrent * CallTriggerRatio
+        PutTriggerPrice = ConversionPriceCurrent * PutTriggerRatio
+        ResetTriggerPrice = ConversionPriceCurrent * ResetTriggerRatio
+
+        Called = 0
+        Putted = 0
+        ResetHit = 0
+        CouponAccrued = 0
+        ExerciseValue = 0
+        RedemptionValue = 0
+        ConversionValue = 0
+
+        CallHitCount = 0
+        PutHitCount = 0
+        ResetHitCount = 0
+
+      # ----------------------------------------------------------------------
+      # ClauseObservationSchedule:
+      # 每个观察日按“强赎 -> 下修 -> 回售”顺序判断
+      # ----------------------------------------------------------------------
+      ClauseObservationSchedule: |
+        if (Called = 0 and Putted = 0) then
+          ConversionValue = Spot() * FaceAmount / ConversionPriceCurrent
+
+          if (Spot() >= CallTriggerPrice) then
+            Called = 1
+            CallHitCount = CallHitCount + 1
+            ExerciseValue = Max(ConversionValue, CallRedemptionPrice)
+          endIf
+
+          if (Spot() <= ResetTriggerPrice and ResetHit = 0) then
+            ResetHit = 1
+            ResetHitCount = ResetHitCount + 1
+            ConversionPriceCurrent = Max(ResetFloorPrice, Spot())
+            if (ConversionPriceCurrent <= 0) then
+              ConversionPriceCurrent = ConversionPrice
+            endIf
+            CallTriggerPrice = ConversionPriceCurrent * CallTriggerRatio
+            PutTriggerPrice = ConversionPriceCurrent * PutTriggerRatio
+            ResetTriggerPrice = ConversionPriceCurrent * ResetTriggerRatio
+          endIf
+
+          if (currentDate() >= PutStartDate and currentDate() <= PutEndDate and Spot() <= PutTriggerPrice) then
+            Putted = 1
+            PutHitCount = PutHitCount + 1
+            ExerciseValue = Max(PutPrice, ConversionValue)
+          endIf
+        endIf
+
+      # ----------------------------------------------------------------------
+      # CouponSchedule:
+      # 存续期间累计票息（被强赎/回售后不再累计）
+      # ----------------------------------------------------------------------
+      CouponSchedule: |
+        if (Called = 0 and Putted = 0) then
+          CouponAccrued = CouponAccrued + FaceAmount * AnnualCouponRate
+        endIf
+
+      # ----------------------------------------------------------------------
+      # ExpiryDate:
+      # 若未提前终止：到期赎回 vs 转股价值择优
+      # 同时输出统一 CB_* 验收变量
+      # ----------------------------------------------------------------------
+      ExpiryDate: |
+        ConversionValue = Spot() * FaceAmount / ConversionPriceCurrent
+        if (Called = 0 and Putted = 0) then
+          RedemptionValue = Max(MaturityRedemptionPrice, ConversionValue)
+        else
+          RedemptionValue = ExerciseValue
+        endIf
+
+        CB_Trigger_Call_Count = CallHitCount
+        CB_Trigger_Put_Count = PutHitCount
+        CB_Trigger_Reset_Count = ResetHitCount
+        CB_Trigger_Call_Prob = Min(1, CallHitCount)
+        CB_Trigger_Put_Prob = Min(1, PutHitCount)
+        CB_Trigger_Reset_Prob = Min(1, ResetHitCount)
+        CB_Conversion_Value = ConversionValue
+        CB_Bond_Floor_Value = MaturityRedemptionPrice
+        CB_Exercise_Value = RedemptionValue
+        CB_Effective_ConversionPrice = ConversionPriceCurrent
+
+      # ----------------------------------------------------------------------
+      # EndDate:
+      # 最终支付：执行价值 + 累计票息
+      # ----------------------------------------------------------------------
+      EndDate: |
+        CB_Coupon_Accrued = CouponAccrued
+        CB_Total_Value = RedemptionValue + CouponAccrued
+        opt pays CB_Total_Value

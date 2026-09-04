@@ -14,7 +14,7 @@
 ## **债券期权计算器案例模板使用函数说明**
 
 ### **1. 节假日构造函数**
-- **[McpCalenders](/zh/latest/api/calendar.html#excel-mcpcalenders-ccy)**：构造一个或多个货币对的节假日对象。
+- **[McpFCalendar](/zh/latest/api/calendar.html#excel-mcpfcalendar-ccys-path-none)**：通过货币和节假日文件构造节假日对象。
 
 ### **2. SwapCurve构造函数**
 - **[McpVanillaSwapCurveData](/zh/latest/api/yieldcurve.html#excel-mcpvanillaswapcurvedata-args-data)**：构造Vanilla Swap Curve对象。

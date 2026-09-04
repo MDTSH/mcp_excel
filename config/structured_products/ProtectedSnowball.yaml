@@ -1,0 +1,142 @@
+# ============================================================================
+# 部分保本雪球结构场外衍生品（Partial Capital Protected Snowball Structure）产品结构定义
+# ============================================================================
+#
+# 产品概述:
+# 部分保本雪球结构在非保本雪球的基础上给予投资者最大亏损保护。
+# - 观察条件：按周观察敲出和敲入
+# - 敲出条件：价格 ≥ 敲出价格（敲出价格逐级调整）
+# - 敲入条件：价格 ≤ 敲入价格
+# - 支付方式：
+#   1. 敲出：支付敲出收益（年化）= 名义本金额 × (敲出收益率 + 最低收益率) × 计算天数 ÷ 年化天数，立即支付
+#   2. 未敲出未敲入：支付红利票息收益（年化）= 名义本金额 × (红利票息率 + 最低收益率) × 计算天数 ÷ 年化天数，期末支付
+#   3. 未敲出已敲入：支付收益（年化）= 名义本金额 × Max(-敲入最低基准收益率, Min(0, (期末价格-行权价格)÷期初价格×参与率)) 
+#                                    + 名义本金额 × 最低收益率 × 计算天数 ÷ 年化天数，期末支付
+#
+# 敲出价格逐级调整：
+# 在第 i 个敲出观察日（Ti），敲出价格（Pi）= 期初价格 × (敲出价格系数 - 敲出价格逐级调整系数 × (i-1))
+#
+# 典型参数示例:
+#    - 期初价格: 100
+#    - 敲出价格系数: 103% (UpperBarPercentage)
+#    - 敲出价格逐级调整系数: 0.5% (KnockOutStepAdjustment)
+#    - 敲入价格: 80% (LowerBarPercentage)
+#    - 行权价格系数: 100% (StrikePercentage)
+#    - 敲出收益率: 18% (KnockOutReturnRate)
+#    - 红利票息率: 20% (DividendCouponRate)
+#    - 最低收益率: 2% (MinReturnRate)
+#    - 敲入最低基准收益率: 20% (KnockInMinReturnRate)
+#    - 参与率: 100% (ParticipationRate)
+#
+# ============================================================================
+
+packages:
+  - name: ProtectedSnowball
+    structure:
+      buy_sell_field: BuySell
+      
+      dates:
+        - StartDate
+        - ExpiryDate
+        - EndDate
+        - ObservationStartDate
+      
+      strikes:
+        - ObservationPrice
+      
+      barriers: []
+      
+      ko_barriers: []
+      
+      yields:
+        - KnockOutReturnRate
+        - DividendCouponRate
+        - MinReturnRate
+        - KnockInMinReturnRate
+      
+      percentages:
+        - UpperBarPercentage
+        - LowerBarPercentage
+        - StkPercentage
+        - ParticipationRate
+        - KnockOutStepAdjustment
+      
+      arguments: 
+        - arg1
+
+      amounts:
+        - Notional
+      
+      calendars:
+        - Calendar
+
+      # 计息基础
+      # Act360: 360天计息，含头不含尾
+      # Act360Inclusive: 360天 inclusive，即360天计息，含头含尾
+      # Act365Fixed: 365天计息，含头不含尾
+      # Act365Inclusive: 365天 inclusive，即365天计息，含头含尾
+      basis: Act365Inclusive
+    
+    schedules:
+      - name: ObservationSchedule
+        start: "@ObservationStartDate"
+        end: "@ExpiryDate"
+        frequency: Weekly
+        calendar: "@Calendar"
+        date_adjuster: Following
+        end_to_end: true
+        long_stub: false
+        end_stub: true
+    
+    payoff:
+      StartDate: |
+        S0 = ObservationPrice
+        StrikePrice = S0 * StkPercentage 
+        UpperBarrierBase = S0 * UpperBarPercentage 
+        LowerBarrier = S0 * LowerBarPercentage 
+        IsKnockedOut = 0
+        IsKnockedIn = 0
+        KnockOutObservationCount = 0
+        PaidCoupon = 0
+        CountX = 0
+        tt = 0
+        PaidCouponFixed = 0
+
+      ObservationSchedule: |
+        CountX = CountX + 1
+        if (IsKnockedOut = 0) then
+          KnockOutObservationCount = KnockOutObservationCount + 1
+          KnockOutPrice = UpperBarrierBase - S0 * (KnockOutStepAdjustment) * (KnockOutObservationCount - 1)
+          
+          if (Spot() >= KnockOutPrice) then
+            IsKnockedOut = 1
+            PaidCoupon = Notional * (KnockOutReturnRate + MinReturnRate) * t()
+            PaidCouponFixed pays PaidCoupon
+            tt = tt + 1
+            opt pays PaidCoupon
+          endIf
+        endIf
+        
+        if (IsKnockedOut = 0 and IsKnockedIn = 0) then
+          if (Spot() <= LowerBarrier) then
+            IsKnockedIn = 1
+          endIf
+        endIf
+      
+      ExpiryDate: |
+        if (IsKnockedOut = 0) then     # 未敲出
+          if (IsKnockedIn = 0) then    # 未敲入
+            FinalYield = (DividendCouponRate + MinReturnRate) * t()
+          else
+            FinalPrice = Spot()          # 敲入后
+            minRate = Min(0, FinalPrice - StrikePrice) / S0 * ParticipationRate
+            MinReturn = Max(KnockInMinReturnRate, minRate)
+            FinalYield = MinReturn + MinReturnRate * t()
+
+          endIf
+        endIf
+
+      EndDate: |
+        if (IsKnockedOut = 0) then
+          opt pays Notional * FinalYield
+        endIf

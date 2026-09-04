@@ -14,7 +14,7 @@ Click the image below to download the template:
 ## **Bond Option Calculator Case Template Function Description**
 
 ### **1.Holiday Constructor**
-- **[McpCalenders](/latest/api/calendar.html#excel-mcpcalenders-ccy)**：Construct one or more holiday objects for currency pairs.
+- **[McpFCalendar](/latest/api/calendar.html#excel-mcpfcalendar-ccys-path-none)**：Construct a calendar from currencies and a holiday file.
 
 ### **2.SwapCurve constructor**
 - **[McpVanillaSwapCurveData](/latest/api/yieldcurve.html#excel-mcpvanillaswapcurvedata-args-data)**：Constructs a Vanilla Swap Curve object.

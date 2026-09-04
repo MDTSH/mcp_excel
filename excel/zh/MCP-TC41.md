@@ -8,6 +8,8 @@ TRC 即 **TrippleRangesCall**（三重区间看涨）。从裁剪快照用 `mdls
 
 **功能描述：** LiveStore 表取 LocalVol / 贴现曲线；TRC定价表填 SDP 要素（YAML 相对路径）并输出 XssPrice / XssPV。MC 默认 2000 路径，F9 后约数十秒。
 
+> **打开即可用**：请下载 [TC31–TC46 完整案例包](/download/MCP-TC31-46-LiveStoreRawMD.zip)（含全部工作簿和共用的 `data/`）。解压后打开 `zh` 目录里的 xlsx。只下单个工作簿时，必须把包里的 `data` 文件夹放到与 xlsx **同一目录**。
+
 [下载 MCP-TC41-TRCLocalVol.xlsx](./MCP-TC41-TRCLocalVol.xlsx)
 
 ## **对象链**

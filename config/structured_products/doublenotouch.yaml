@@ -1,0 +1,83 @@
+# ============================================================================
+# 双不触碰期权（Double No Touch）产品结构定义
+# ============================================================================
+#
+# 产品概述:
+# 双不触碰期权是一种到期时根据价格是否触碰上下障碍价支付不同收益的期权。
+# - 观察条件：每日观察是否触碰障碍价
+# - 触碰条件：价格 ≤ 下障碍价 或 价格 ≥ 上障碍价
+# - 支付方式：未触碰时支付高票息，触碰后支付低票息
+#
+# 典型参数示例:
+#    - 期初价格: 100
+#    - 下障碍价: 80% (LowerBarPercentage)
+#    - 上障碍价: 120% (UpperBarPercentage)
+#    - 低票息: 3% (LowYield)
+#    - 高票息: 10% (HighYield)
+#
+# ============================================================================
+
+packages:
+  - name: DoubleNoTouch
+    structure:
+      buy_sell_field: BuySell
+      
+      dates:
+        - StartDate
+        - EndDate
+        - ExpiryDate
+      
+      strikes:
+        - ObservationPrice
+      
+      barriers: []
+      
+      ko_barriers: []
+      
+      yields: []
+      
+      percentages:
+        - LowerBarPercentage
+        - UpperBarPercentage
+      
+      arguments:
+        - LowYield
+        - HighYield
+      
+      amounts:
+        - Notional
+      
+      calendars:
+        - Calendar
+      
+      basis: Act360
+    
+    schedules:
+      - name: ObservationSchedule
+        start: "@StartDate"
+        end: "@EndDate"
+        frequency: Daily
+        calendar: "@Calendar"
+        date_adjuster: Actual
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+    
+    payoff:
+      ReferenceDate: |
+        S0 = ObservationPrice
+        LowerBarrier = S0 * LowerBarPercentage
+        UpperBarrier = S0 * UpperBarPercentage
+        IsKnockedOut = 0
+        
+      ObservationSchedule: |
+        if (IsKnockedOut = 0 and (Spot() <= LowerBarrier or Spot() >= UpperBarrier)) then
+          IsKnockedOut = 1
+        endIf
+        
+      EndDate: |
+        if (IsKnockedOut = 0) then
+          opt pays Notional * HighYield
+        else
+          opt pays Notional * LowYield
+        endIf

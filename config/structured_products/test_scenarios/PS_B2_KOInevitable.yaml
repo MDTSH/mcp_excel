@@ -1,0 +1,85 @@
+# ============================================================================
+# PS-B2: KO基本必然（KO Set Very Low）
+# ============================================================================
+# 
+# 测试目标：验证KO基本必然场景下的行为
+# - UpperBarPercentage设置得很低（90%），小于S0
+# - step-down=0，KO价格不下降
+# - 预期：第一次观察日几乎必KO（在σ=0且恒定路径下必然成立）
+# - P_KO≈1且KO_time_index≈1
+# 
+# 预期结果：
+# - P_KO≈1
+# - IsKnockedOut=1
+# - KO在第1个观察日触发
+# - 在KO观察日立即支付，EndDate不再支付
+# ============================================================================
+
+test_scenario:
+  name: "PS-B2: KO Inevitable (KO Set Very Low)"
+  product_id: "ProtectedSnowball"
+  description: "验证KO基本必然场景下的行为"
+  
+  # 确定性路径设置（σ=0，恒定价格）
+  path_type: "deterministic"
+  volatility: 0.0
+  spot_path: "constant"
+  spot_value: 100.0
+  
+  # 产品参数
+  parameters:
+    InitialPrice: 100.0
+    ObservationPrice: 100.0
+    UpperBarPercentage: 0.90  # 90%，KO价格=90，spot=100>=90，必然KO
+    LowerBarPercentage: 0.80  # 80%，KI价格=80，spot=100>80，永不KI
+    KnockOutReturnRate: 0.18
+    DividendCouponRate: 0.20
+    MinReturnRate: 0.02
+    KnockInMinReturnRate: -0.20
+    StrikePercentage: 1.0
+    ParticipationRate: 1.0
+    KnockOutStepAdjustment: 0.0  # 0%，KO价格不下降
+    Notional: 1000000.0
+    BuySell: "Sell"
+  
+  # 日期设置
+  dates:
+    ReferenceDate: "2026/1/26"
+    StartDate: "2026/1/26"
+    ObservationStartDate: "2026/2/5"
+    ExpiryDate: "2027/1/26"
+    EndDate: "2027/1/28"
+    PremiumDate: "2026/1/26"
+  
+  # 市场参数
+  market:
+    RiskFreeRate: 0.03
+    Dividend: 0.0
+    Volatility: 0.0  # 确定性场景，零波动
+    DayCounter: "Act365Inclusive"
+  
+  # 模拟参数
+  simulation:
+    num_simulations: 1000  # 确定性场景可以用较少模拟次数
+    seed: 12345
+    use_deterministic_path: true  # 关键：使用确定性路径
+  
+  # 预期结果（断言）
+  assertions:
+    P_KO:
+      expected: 1.0
+      tolerance: 0.01
+      description: "敲出概率应为1（KO价格极低，spot必然达到）"
+    P_KI:
+      expected: 0.0
+      tolerance: 0.01
+      description: "敲入概率应为0（spot > KI价格）"
+    IsKnockedOut:
+      expected: 1
+      description: "最终状态：已敲出"
+    IsKnockedIn:
+      expected: 0
+      description: "最终状态：未敲入"
+    FinalCashflow:
+      expected_range: [0.0, 50000.0]  # KO支付应该较小（短期KO）
+      description: "KO支付金额（考虑折现）"

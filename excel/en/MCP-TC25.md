@@ -14,7 +14,7 @@ Click the image below to download the template:
 ## **Instructions for Using the Function of the Swap Strategy Case Template**
 
 ### **1. Holiday Calendar Construction Functions**
-- **[McpCalenders](/latest/api/calendar.html#excel-mcpcalenders-ccy)**：Constructs a holiday calendar object.
+- **[McpFCalendar](/latest/api/calendar.html#excel-mcpfcalendar-ccys-path-none)**：Construct a calendar from currencies and a holiday file.
 
 ### **2. SwapCurve Construction Functions**
 - **[McpVanillaSwapCurveData](/latest/api/yieldcurve.html#excel-mcpvanillaswapcurvedata-args-data)**：Construct a Vanilla Swap Curve object.

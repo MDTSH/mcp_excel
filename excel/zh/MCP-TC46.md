@@ -8,6 +8,8 @@
 
 **功能描述：** `EQ_VOL_SAMPLE` 为 2 个到期 × 5 个行权价的小网格（`UsingImpVols`，依赖 `CNYDEPO`）。`ExpiryDates` 须与 `Strikes` 等长（逐点展开）。不是 `FXVolSurface2`（P0/TC40）。
 
+> **打开即可用**：请下载 [TC31–TC46 完整案例包](/download/MCP-TC31-46-LiveStoreRawMD.zip)（含全部工作簿和共用的 `data/`）。解压后打开 `zh` 目录里的 xlsx。只下单个工作簿时，必须把包里的 `data` 文件夹放到与 xlsx **同一目录**。
+
 [下载 MCP-TC46-VolSurface.xlsx](./MCP-TC46-VolSurface.xlsx)
 
 ## **对象链**

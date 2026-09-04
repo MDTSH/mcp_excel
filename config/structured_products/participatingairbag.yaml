@@ -1,0 +1,184 @@
+# ============================================================================
+# 分成气囊结构场外衍生品（Participating Airbag）产品结构定义
+# ============================================================================
+#
+# 产品概述（Product Overview）:
+# 分成气囊是一种带低触碰保护机制的结构化产品，具有分成收益特征。
+# 其特点是：
+# - 未发生低触碰事件时：收益 = Max（期末价格－行权价格1， 0）÷期初价格×参与率1
+# - 发生低触碰事件后：收益 = Max（期末价格－行权价格2，0）÷期初价格×参与率3 + Min（期末价格－行权价格2，0）÷期初价格×参与率2
+# - 美式观察：存续期内每日观察是否触发低触碰事件（收盘价观察）
+# - 到期支付：所有收益在到期日统一结算
+#
+# Termsheet 产品条款说明:
+# ----------------------
+#
+# 1. 产品基本信息:
+#    - 产品类型: 分成气囊（Participating Airbag）
+#    - 标的资产: 股票指数、个股或其他金融资产
+#    - 产品期限: 通常为3-12个月
+#    - 观察频率: 低触碰为每日观察（American型，收盘价观察）
+#
+# 2. 低触碰机制（Low Touch Mechanism）:
+#    - 低触碰观察日: 存续期内每日观察（American型）
+#    - 低触碰观察类型: 收盘价
+#    - 低触碰价格: 低触碰障碍价
+#    - 低触碰条件: 若在任意低触碰观察日，标的证券的收盘价格 ≤ 低触碰价格，则触发低触碰事件
+#    - 低触碰影响: 一旦触发低触碰事件，产品从简单看涨模式转换为分成收益模式
+#
+# 3. 收益分配机制:
+#    a) 未发生低触碰事件（持有到期）:
+#       - 产品存续期间从未触发低触碰事件
+#       - 标的证券观察收益率 = Max（期末价格－行权价格1， 0）÷期初价格×参与率1
+#
+#    b) 发生低触碰事件（持有到期）:
+#       - 产品存续期间触发低触碰事件
+#       - 标的证券观察收益率 = Max（期末价格－行权价格2，0）÷期初价格×参与率3 + Min（期末价格－行权价格2，0）÷期初价格×参与率2
+#       - 上涨时使用参与率3，下跌时使用参与率2
+#
+# 4. 期权结算支付金额:
+#    - 期权结算支付金额 = 名义本金额×标的证券观察收益率
+#
+# 5. 典型参数示例:
+#    - 期初价格: 100
+#    - LowerStrike（行权价格1）: 100
+#    - UpperStrike（行权价格2）: 110
+#    - LowTouchBarrier（低触碰价格）: 85
+#    - ParticipateRate1（参与率1）: 1.0
+#    - ParticipateRate2（参与率2）: 1.0
+#    - ParticipateRate3（参与率3）: 0.8
+#    - Notional（名义本金额）: 1000000
+#    - 产品期限: 6个月
+#
+# 6. 字段映射说明:
+#    - LowerStrike: 行权价格1
+#    - UpperStrike: 行权价格2
+#    - LowTouchBarrier: 低触碰障碍价
+#    - ParticipateRate1: 参与率1（未触碰时使用）
+#    - ParticipateRate2: 参与率2（触碰后下跌时使用）
+#    - ParticipateRate3: 参与率3（触碰后上涨时使用）
+#    - Notional: 名义本金额
+#
+# ============================================================================
+
+packages:
+  - name: ParticipatingAirbag
+    structure:
+      buy_sell_field: BuySell
+      
+      dates:
+        - StartDate          # 期初日期
+        - EndDate            # 期末日期（结算日）
+        - ExpiryDate         # 到期日
+        - PremiumDate        # 保费支付日
+      
+      strikes:
+        - ObservationPrice           # 期初价格
+      barriers: []
+      
+      ko_barriers:
+        - KnockInBarrier
+      yields: []
+      
+      percentages:
+        - ParticipateRate1   # 参与率1（未触碰时使用）
+        - ParticipateRate2   # 参与率2（触碰后下跌时使用）
+        - ParticipateRate3   # 参与率3（触碰后上涨时使用）
+        - KnockInBarPercentage   # 低触碰障碍价%
+        - UpperStrkPercentage   # 行权价格2%
+        - LowerStrkPercentage   # 行权价格1%
+
+      
+      arguments: []
+      
+      amounts:
+        - Notional           # 名义本金额
+      
+      calendars:
+        - Calendar
+      
+      basis: Act360
+      
+      # VaR 配置
+      var_config:
+        enabled: true
+        default_horizons:
+          - "1D"
+          - "10D"
+          - "1M"
+          - "3M"
+          - "4M"
+          - "150D"
+          - "5M"
+          - "6M"
+      
+      # PFE 配置
+      pfe_config:
+        enabled: false
+        default_horizons:
+          - "1M"
+          - "3M"
+          - "4M"
+          - "150D"
+          - "5M"
+          - "6M"
+    
+    schedules:
+      - name: LowTouchObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Daily
+        calendar: "@Calendar"
+        date_adjuster: Following
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+    
+    payoff:
+      StartDate: |
+        S0 = ObservationPrice       # 期初价格
+        S = Spot()
+        LowerStrike = S0 * LowerStrkPercentage
+        UpperStrike = S0 * UpperStrkPercentage
+        KnockInBarrier = S0 * KnockInBarPercentage
+        IsLowTouchTriggered = 0            # 是否发生低触碰事件（0=未触发，1=已触发）
+        return =0
+
+      
+      LowTouchObservationSchedule: |
+        # 每日观察是否触发低触碰事件（收盘价观察）
+        if (IsLowTouchTriggered = 0) then
+          if (Spot() <= KnockInBarrier) then
+            IsLowTouchTriggered = 1
+          endIf
+        endIf
+      ExpiryDate: |
+        if (IsLowTouchTriggered = 0) then
+          return = max(Spot()-S0, 0)/S0 * ParticipateRate1
+        else
+          return = (Spot()-S0)/S0 
+        endIf
+      
+      EndDate: |
+        opt pays return*Notional
+      
+      # VaR 观察脚本模板（程序会自动替换 VAR_VALUE 为 VAR_VALUE_{HORIZON}）
+      VarObservationDate: |
+        return_ = 0
+        if (IsLowTouchTriggered = 0) then
+          return_ = max(Spot()-S0, 0)/S0 * ParticipateRate1
+        else
+          return_ = (Spot()-S0)/S0 
+        endIf
+        VAR_VALUE pays return_*Notional
+      
+      # PFE 观察脚本模板（程序会自动替换 PFE_VALUE 为 PFE_VALUE_{HORIZON}）
+      PfeObservationDate: |
+        return_ = 0
+        if (IsLowTouchTriggered = 0) then
+          return_ = max(Spot()-S0, 0)/S0 * ParticipateRate1
+        else
+          return_ = (Spot()-S0)/S0 
+        endIf
+        PFE_VALUE pays return_*Notional
+

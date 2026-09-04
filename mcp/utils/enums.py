@@ -1,3 +1,17 @@
+class ABSTrancheType:
+    """ABS 档位类型：0=优先档, 1=次级档, 2=私募档"""
+    PRIORITY = 0
+    SUBORDINATED = 1
+    PRIVATE_PLACEMENT = 2
+
+
+class ABSMarket:
+    """ABS 市场类型：0=银行间, 1=深交所, 2=上交所"""
+    INTERBANK = 0
+    EXCHANGE_SZSE = 1
+    EXCHANGE_SSE = 2
+
+
 class DayCounter:
     NONE = -1
     Act360 = 0
@@ -14,6 +28,20 @@ class DayCounter:
     ActActXTR = 11
     ActActICMAComplement = 12
     Act252 = 13
+    Act360Inclusive = 14
+    Act365Inclusive = 15
+
+
+class VanillaSwapCurveDataMode:
+    """McpVanillaSwapCurveData 构造模式（C++ MVanillaSwapCurveData 首参 nmode 或等价重载）。"""
+    # Mode 1：StartDate + 明确到期日；data 表用 MaturityDates
+    MaturityDates = 1
+    Dates = 1
+    # Mode 2：StartDate + 期限 Tenor；data 表用 MaturityTenors
+    MaturityTenors = 2
+    Tenors = 2
+    # Mode 3：ReferenceDate + SwapStartLag + 指数/OIS 风格完整定盘付息参数（无 StartDate）
+    IndexSwap = 3
 
 
 class Frequency:
@@ -417,6 +445,18 @@ class CalculatedTarget:
     CCY2 = 3
 
 
+class DoubleDigitalType:
+    """双障碍数字期权类型：1=ONE_TOUCH, 2=NO_TOUCH"""
+    ONE_TOUCH = 1
+    NO_TOUCH = 2
+
+
+class ExerciseStyle:
+    """行权方式：0=欧式, 1=美式（与 OptionExpiryNature 值一致）"""
+    EUROPEAN = 0
+    AMERICAN = 1
+
+
 class DigitalType:
     CASH_OR_NOTHING_CALL = 1
     ASSET_OR_NOTHING_CALL = 2
@@ -526,8 +566,8 @@ class AmortisationType:
 class ResidualType:
     AbsoluteValue = 0
     Percent = 1
-		
-    
+
+
 def key_value_of_enum(inst: object):
     keys = dir(inst)
     kv = {}
@@ -565,6 +605,7 @@ class EnumWrapper():
         self.enum_kv = {}
         self.enum_vk = {}
         enum_list = [DayCounter(),
+                     VanillaSwapCurveDataMode(),
                      Frequency(),
                      PaymentType(),
                      DateAdjusterRule(),
@@ -612,6 +653,8 @@ class EnumWrapper():
                      ParametricCurveModel(),
                      CalculateTarget(),
                      CalculatedTarget(),
+                     DoubleDigitalType(),
+                     ExerciseStyle(),
                      DigitalType(),
                      BondCouponType(),
                      XsModelType(),

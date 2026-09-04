@@ -558,7 +558,8 @@ class McpVanillaOption(mcp.wrapper.McpVanillaOption, PayoffSpec):
                 self.domesticRate = self.volSurface.get_acc_rate(self.expiryDate)
                 self.foreignRate = self.volSurface.get_und_rate(self.expiryDate)
             self.volatility = get_volatility(self.volSurface, self.strikePx, self.expiryDate)
-            self.ttet = args[17]
+            # VoType 3/4 schema 无 TimeToExpiryTime，使用默认 0.0
+            self.ttet = args[17] if len(args) > 17 else 0.0
         #if vo_type != 7 and vo_type != 6:
         if vo_type not in (6, 7, 8, 9, 10, 11, 12):
             day_counter = McpDayCounter(self.dayCounter)
@@ -961,6 +962,13 @@ class McpAsianOption(mcp.mcp.MAsianOption, PayoffSpec):
             price_method = PricingMethod.BLACKSCHOLES
         return super().Vega(price_method)
 
+    # PV：与估值引擎 fx_options_adapter.cpp 中 PV = DiscMarketValue(true) 对齐。
+    def PV(self, isAmount=True):
+        try:
+            return super().PV(isAmount)
+        except (AttributeError, TypeError, NotImplementedError):
+            return super().DiscMarketValue(isAmount)
+
     def vanna(self):
         return 0
 
@@ -1350,7 +1358,10 @@ class McpVanillaBarriers(mcp.mcp.MVanillaBarriers, PayoffSpec):
     def __init__(self, *args):
         self.print_info = False
         self.field_dict = None
-        if len(args) == 25:
+        if len(args) in (25, 28):
+            # 25 参: 原有 scalar 模式 (legacy, 不带 VV conventions).
+            # 28 参: scalar + 3 个 VV conventions (DeltaType, PremiumAdjusted, ATMVolType),
+            #        对应 C++ MVanillaBarriers scalar ctor 新增的 3 个 int/bool 参数 (默认值在 C++ 侧).
             self.mode = 2
             self.callPut = args[0]
             self.barrierType = args[1]
@@ -1359,6 +1370,9 @@ class McpVanillaBarriers(mcp.mcp.MVanillaBarriers, PayoffSpec):
             self.buySell = args[4]
             self.expiryDate = args[5]
             self.deliveryDate = args[6]
+            # 在 25 参数模式下，deliveryDate 实际上就是 settlementDate
+            # 为了兼容 get_field_dict 方法，同时设置 settlementDate
+            self.settlementDate = args[6]
             self.strikePx = args[7]
             self.barrier = args[8]
             self.accRate = args[9]
@@ -1378,9 +1392,94 @@ class McpVanillaBarriers(mcp.mcp.MVanillaBarriers, PayoffSpec):
             self.premiumDate = args[23]
             self.numSimulation = int(args[24])
 
+            # 28 参时, 25-27 是 DeltaType / PremiumAdjusted / ATMVolType (来自 args_def 新增字段).
+            # 25 参时, 用与 C++ 侧一致的默认值: SPOT_DELTA(0), True, DELTA_NEUTRAL_STRADDLE(1).
+            if len(args) == 28:
+                self.deltaType = args[25]
+                self.premiumAdjusted = args[26]
+                self.atmVolType = args[27]
+            else:
+                self.deltaType = DeltaType.SPOT_DELTA
+                self.premiumAdjusted = True
+                self.atmVolType = ATMVolType.DELTA_NEUTRAL_STRADDLE
+
             day_counter = McpDayCounter(self.dayCounter)
             self.timeToExpiry = day_counter.YearFraction(self.referenceDate, self.expiryDate)
             self.timeToDelivery = day_counter.YearFraction(self.premiumDate, self.deliveryDate)
+            # 在 25 参数模式下，timeToSettlement 应该等于 timeToDelivery
+            self.timeToSettlement = self.timeToDelivery
+
+            # 透传给 C++ 时, 始终用 28 参形式调用 (C++ MVanillaBarriers scalar ctor 也接受 28 参).
+            full_args = list(args)
+            if len(full_args) == 25:
+                full_args.extend([self.deltaType, self.premiumAdjusted, self.atmVolType])
+
+            print(f"McpVanillaBarriers args: {tuple(full_args)}")
+            mcp_args = to_mcp_args(tuple(full_args))
+            super().__init__(*mcp_args)
+
+            # super().__init__(self.callPut, self.barrierType, self.referenceDate, self.spotPx, self.buySell,
+            #                  self.expiryDate, self.settlementDate, self.strikePx, self.barrier, self.accRate,
+            #                  self.undRate, self.volatility, self.faceValue, self.rebate, self.adjTable.getHandler(),
+            #                  self.adjustmentOnly, self.calendar.getHandler(), self.dayCounter)
+
+            self.forward = math.exp((self.accRate - self.undRate) * self.timeToDelivery) * self.spotPx
+        elif len(args) == 19:
+            self.mode = 2
+            self.callPut = args[0]
+            self.barrierType = args[1]
+            self.referenceDate = args[2]
+            self.spotPx = args[3]
+            self.buySell = args[4]
+            self.expiryDate = args[5]
+            self.settlementDate = args[6]
+            self.strikePx = args[7]
+            self.barrier = args[8]
+            self.accRate = args[9]
+            self.undRate = args[10]
+            self.volatility = args[11]
+            self.rebate = args[12]
+            self.faceValue = args[13]
+            self.pricingMethod = args[14]
+            # self.adjTable = args[15]
+            # self.adjustmentOnly = args[16]
+            # self.calendar = args[17]
+            # self.dayCounter = args[18]
+            
+            self.optionExpiryNature = 0 # European
+            self.barrierLow = args[8]
+            self.rr25 = 0.0
+            self.bf25 = 0.0
+            self.discreteFactor =  0.5826
+            self.discreteAdjusted = False
+            self.calendar = args[17]
+            self.dayCounter = args[18]
+            self.premiumDate = args[2]
+            self.numSimulation = 1000
+
+            temp_args = list(args)
+
+            if len(temp_args) < 25:
+                temp_args.extend([None] * (25 - len(temp_args)))
+
+            # 2. 将类属性反向更新回 args 列表中的指定位置 (15-24)
+            # 这里假设了你希望存储的对应关系，你可以根据实际需求调整索引号
+            temp_args[15] = self.optionExpiryNature
+            temp_args[16] = self.barrierLow
+            temp_args[17] = self.rr25          # 更新原有的 args[17]
+            temp_args[18] = self.bf25        # 更新原有的 args[18]
+            temp_args[19] = self.discreteFactor      # 更新原有的 args[19]
+            temp_args[20] = self.discreteAdjusted        # 扩展出的新位置
+            temp_args[21] = self.calendar              # 扩展出的新位置
+            temp_args[22] = self.dayCounter              # 扩展出的新位置
+            temp_args[23] = self.premiumDate       # 扩展出的新位置
+            temp_args[24] = self.numSimulation  # 扩展出的新位置
+
+            args = tuple(temp_args) 
+            
+            day_counter = McpDayCounter(self.dayCounter)
+            self.timeToExpiry = day_counter.YearFraction(self.referenceDate, self.expiryDate)
+            self.timeToSettlement = day_counter.YearFraction(self.referenceDate, self.settlementDate)
 
             print(f"McpVanillaBarriers args: {args}")
             mcp_args = to_mcp_args(args)
@@ -1391,8 +1490,78 @@ class McpVanillaBarriers(mcp.mcp.MVanillaBarriers, PayoffSpec):
             #                  self.undRate, self.volatility, self.faceValue, self.rebate, self.adjTable.getHandler(),
             #                  self.adjustmentOnly, self.calendar.getHandler(), self.dayCounter)
 
-            self.forward = math.exp((self.accRate - self.undRate) * self.timeToDelivery) * self.spotPx
+            self.forward = math.exp((self.accRate - self.undRate) * self.timeToExpiry) * self.spotPx
+        elif len(args) in (12, 13):
+            # 12参：FXVolSurface 模式（对应 mcplib.h 第 1263 行的 12 参构造，PricingMethod 固定 BLACKSCHOLES）
+            # 13参：FXVolSurface + PricingMethod 模式（对应新增的 13 参构造，支持 VANNAVOLGA）
+            #   当 PricingMethod = VANNAVOLGA 时，C++ 层会自动从 FXVolSurface 提取 RR25/BF25
+            self.mode = 3
+            self.args = args
+            self.callPut = args[0]
+            self.barrierType = args[1]
+            self.buySell = args[2]
+            self.referenceDate = args[3]
+            self.premiumDate = args[4]
+            self.expiryDate = args[5]
+            self.deliveryDate = args[6]
+            self.settlementDate = args[6]
+            self.strikePx = args[7]
+            self.barrier = args[8]
+            self.fxVolSurface = args[9]
+            self.faceValue = args[10] if len(args) > 10 else 1000000.0
+            self.rebate = args[11] if len(args) > 11 else 0.0
+            # 13 参时读取 PricingMethod，12 参时默认 BLACKSCHOLES
+            self.pricingMethod = args[12] if len(args) == 13 else PricingMethod.BLACKSCHOLES
 
+            self.optionExpiryNature = OptionExpiryNature.EUROPEAN
+            self.barrierLow = 0.0
+            self.discreteFactor = 0.5826
+            self.discreteAdjusted = False
+            self.calendar = None
+            self.dayCounter = DayCounter.Act365Fixed
+            self.numSimulation = 10000
+
+            # 从 FXVolSurface 反取市场数据，用于报表/字段展示与 forward 计算
+            try:
+                self.spotPx = self.fxVolSurface.GetSpot()
+            except Exception:
+                self.spotPx = float('nan')
+            try:
+                self.accRate = self.fxVolSurface.GetDomesticRate(self.expiryDate)
+                self.undRate = self.fxVolSurface.GetForeignRate(self.expiryDate)
+            except Exception:
+                self.accRate = float('nan')
+                self.undRate = float('nan')
+            try:
+                self.volatility = self.fxVolSurface.GetATMVol(self.expiryDate)
+            except Exception:
+                self.volatility = float('nan')
+
+            # 提取 RR25/BF25（用于字段展示；C++ 侧 VV 构造时会独立提取，此处仅供 Python 层记录）
+            try:
+                if self.pricingMethod == PricingMethod.VANNAVOLGA:
+                    self.rr25 = self.fxVolSurface.GetVolatility("25RR", self.expiryDate, 0.0, "")
+                    self.bf25 = self.fxVolSurface.GetVolatility("25BF", self.expiryDate, 0.0, "")
+                else:
+                    self.rr25 = 0.0
+                    self.bf25 = 0.0
+            except Exception:
+                self.rr25 = 0.0
+                self.bf25 = 0.0
+
+            day_counter = McpDayCounter(self.dayCounter)
+            self.timeToExpiry = day_counter.YearFraction(self.referenceDate, self.expiryDate)
+            self.timeToDelivery = day_counter.YearFraction(self.premiumDate, self.deliveryDate)
+            self.timeToSettlement = self.timeToDelivery
+
+            print(f"McpVanillaBarriers args (FXVolSurface mode, pricingMethod={self.pricingMethod}): {args}")
+            mcp_args = to_mcp_args(args)
+            super().__init__(*mcp_args)
+
+            if not math.isnan(self.spotPx) and not math.isnan(self.accRate) and not math.isnan(self.undRate):
+                self.forward = math.exp((self.accRate - self.undRate) * self.timeToDelivery) * self.spotPx
+            else:
+                self.forward = float('nan')
         else:
             raise Exception("Unknown args, length=" + str(len(args)))
 
@@ -1491,8 +1660,105 @@ class McpVanillaBarriers(mcp.mcp.MVanillaBarriers, PayoffSpec):
     def vega(self, price_method=None):
         return super().Vega()
 
+    # PV：今日折现现值（NPV），与估值引擎 fx_options_adapter.cpp::computeMetrics
+    # 中的 option_->DiscMarketValue(true) 保持一致语义（多头有价值为正）。
+    # 优先尝试 SWIG 已暴露的 PV 接口（若未来 C++ 层补齐 MVanillaBarriers::PV，会优先生效）；
+    # 否则直接回退到 DiscMarketValue，确保 Excel McpPV(...) 立即可用，并对齐跑批 PV。
+    def PV(self, isAmount=True):
+        try:
+            return super().PV(isAmount)
+        except (AttributeError, TypeError, NotImplementedError):
+            return super().DiscMarketValue(isAmount)
 
-class McpEuropeanDigital(mcp.mcp.MEuropeanDigital, PayoffSpec):
+    def GetSpot(self):
+        fn = getattr(super(), "GetSpot", None)
+        if callable(fn):
+            try:
+                return fn()
+            except (AttributeError, TypeError, NotImplementedError):
+                pass
+        fxvs = getattr(self, "fxVolSurface", None)
+        if fxvs is not None:
+            try:
+                return fxvs.GetSpot()
+            except Exception:
+                pass
+        return self.spotPx
+
+    def GetForward(self):
+        fn = getattr(super(), "GetForward", None)
+        if callable(fn):
+            try:
+                return fn()
+            except (AttributeError, TypeError, NotImplementedError):
+                pass
+        fxvs = getattr(self, "fxVolSurface", None)
+        if fxvs is not None:
+            try:
+                delivery = getattr(self, "deliveryDate", None) or getattr(self, "settlementDate", None)
+                return fxvs.GetForward(delivery, True)
+            except Exception:
+                pass
+        return getattr(self, "forward", float("nan"))
+
+    def GetVol(self):
+        fn = getattr(super(), "GetVol", None)
+        if callable(fn):
+            try:
+                return fn()
+            except (AttributeError, TypeError, NotImplementedError):
+                pass
+        fxvs = getattr(self, "fxVolSurface", None)
+        if fxvs is not None:
+            try:
+                return fxvs.GetVolatility(self.strikePx, self.expiryDate)
+            except Exception:
+                pass
+        return self.volatility
+
+    def GetStrike(self):
+        fn = getattr(super(), "GetStrike", None)
+        if callable(fn):
+            try:
+                return fn()
+            except (AttributeError, TypeError, NotImplementedError):
+                pass
+        return self.strikePx
+
+    def GetAccRate(self):
+        fn = getattr(super(), "GetAccRate", None)
+        if callable(fn):
+            try:
+                return fn()
+            except (AttributeError, TypeError, NotImplementedError):
+                pass
+        fxvs = getattr(self, "fxVolSurface", None)
+        if fxvs is not None:
+            try:
+                expiry = getattr(self, "expiryDate", None)
+                return fxvs.GetDomesticRate(expiry)
+            except Exception:
+                pass
+        return getattr(self, "accRate", float("nan"))
+
+    def GetUndRate(self):
+        fn = getattr(super(), "GetUndRate", None)
+        if callable(fn):
+            try:
+                return fn()
+            except (AttributeError, TypeError, NotImplementedError):
+                pass
+        fxvs = getattr(self, "fxVolSurface", None)
+        if fxvs is not None:
+            try:
+                expiry = getattr(self, "expiryDate", None)
+                return fxvs.GetForeignRate(expiry)
+            except Exception:
+                pass
+        return getattr(self, "undRate", float("nan"))
+
+
+class McpEuropeanDigital(mcp.mcp.MDigitalOption, PayoffSpec):
 
     def __init__(self, *args):
         self.print_info = False
@@ -1515,9 +1781,10 @@ class McpEuropeanDigital(mcp.mcp.MEuropeanDigital, PayoffSpec):
         self.calendar = args[12]
         self.dayCounter = args[13]
         self.pricingMethod = args[14]
-        self.replicateDelta = args[15],
+        self.replicateDelta = args[15]
         self.rr25 = args[16]
         self.bf25 = args[17]
+        self.exerciseStyle = args[18] if len(args) > 18 else 0
         #self.adjustmentOnly = args[16]
 
         day_counter = McpDayCounter(self.dayCounter)
@@ -1628,3 +1895,66 @@ class McpEuropeanDigital(mcp.mcp.MEuropeanDigital, PayoffSpec):
 
     def vega(self, price_method=None):
         return super().Vega()
+
+    # PV：与估值引擎 fx_options_adapter.cpp 中 PV = DiscMarketValue(true) 对齐。
+    # 优先尝试 SWIG 暴露的 PV，否则回退到 DiscMarketValue。
+    def PV(self, isAmount=True):
+        try:
+            return super().PV(isAmount)
+        except (AttributeError, TypeError, NotImplementedError):
+            return super().DiscMarketValue(isAmount)
+
+    def GetSpot(self):
+        fn = getattr(super(), "GetSpot", None)
+        if callable(fn):
+            try:
+                return fn()
+            except (AttributeError, TypeError, NotImplementedError):
+                pass
+        return self.spotPx
+
+    def GetForward(self):
+        fn = getattr(super(), "GetForward", None)
+        if callable(fn):
+            try:
+                return fn()
+            except (AttributeError, TypeError, NotImplementedError):
+                pass
+        return self.forward
+
+    def GetVol(self):
+        for name in ("GetVol", "GetVolatility"):
+            fn = getattr(super(), name, None)
+            if callable(fn):
+                try:
+                    return fn()
+                except (AttributeError, TypeError, NotImplementedError):
+                    continue
+        return self.volatility
+
+    def GetStrike(self):
+        fn = getattr(super(), "GetStrike", None)
+        if callable(fn):
+            try:
+                return fn()
+            except (AttributeError, TypeError, NotImplementedError):
+                pass
+        return self.strikePx
+
+    def GetAccRate(self):
+        fn = getattr(super(), "GetAccRate", None)
+        if callable(fn):
+            try:
+                return fn()
+            except (AttributeError, TypeError, NotImplementedError):
+                pass
+        return self.accRate
+
+    def GetUndRate(self):
+        fn = getattr(super(), "GetUndRate", None)
+        if callable(fn):
+            try:
+                return fn()
+            except (AttributeError, TypeError, NotImplementedError):
+                pass
+        return self.undRate

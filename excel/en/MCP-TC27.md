@@ -14,7 +14,7 @@ Click the image below to download the template:
 ## **Interest Rate Swap Option Case Template Function Description**
 
 ### **1.  Holiday Calendar Construction Functions**
-- **[McpCalenders](/latest/api/calendar.html#excel-mcpcalenders-ccy)**：Constructs a holiday calendar object.
+- **[McpFCalendar](/latest/api/calendar.html#excel-mcpfcalendar-ccys-path-none)**：Construct a calendar from currencies and a holiday file.
 
 ### **2. SwapCurve Construction Functions**
 - **[McpVanillaSwapCurveData](/latest/api/yieldcurve.html#excel-mcpvanillaswapcurvedata-args-data)**：Constructs a Vanilla Swap Curve object.

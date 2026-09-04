@@ -60,6 +60,30 @@ def McpAsianOption(*args):
 def McpFixedRateBond(*args):
 	return tool_def.tool_create('McpFixedRateBond', args)
 
+def McpAmortizingBond(*args):
+	return tool_def.tool_create('McpAmortizingBond', args)
+
+def McpCommodityFuture(*args):
+	return tool_def.tool_create('McpCommodityFuture', args)
+
+def McpBondFuture(*args):
+	return tool_def.tool_create('McpBondFuture', args)
+
+def McpEquityFuture(*args):
+	return tool_def.tool_create('McpEquityFuture', args)
+
+def McpEquitySpot(*args):
+	return tool_def.tool_create('McpEquitySpot', args)
+
+def McpFund(*args):
+	return tool_def.tool_create('McpFund', args)
+
+def McpFXNDF(*args):
+	return tool_def.tool_create('McpFXNDF', args)
+
+def McpRepurchaseProduct(*args):
+	return tool_def.tool_create('McpRepurchaseProduct', args)
+
 def McpBlack76Swaption(*args):
 	return tool_def.tool_create('McpBlack76Swaption', args)
 
@@ -105,12 +129,36 @@ def McpBondCurve(*args):
 	return tool_def.tool_create('McpBondCurve', args)
 
 
+def McpBondSpreadCurve(*args):
+	return tool_def.tool_create('McpBondSpreadCurve', args)
+
+
 def McpRounder(*args):
 	return tool_def.tool_create('McpRounder', args)
 
 
+def McpRateConvention(*args):
+	return tool_def.tool_create('McpRateConvention', args)
+
+
+def McpRateConventionGetAllPredefined():
+	"""Return list of all predefined RateConvention names (for Python use)"""
+	from mcp.wrapper import get_all_predefined_rate_conventions
+	return get_all_predefined_rate_conventions()
+
+
 def McpEuropeanDigital(*args):
 	return tool_def.tool_create('McpEuropeanDigital', args)
+
+
+def McpDigitalOption(*args):
+	"""数字期权构造函数，等价于 McpEuropeanDigital（创建 MDigitalOption）"""
+	return tool_def.tool_create('McpEuropeanDigital', args)
+
+
+def McpDoubleDigitalOption(*args):
+	"""双障碍数字期权构造函数（创建 MDoubleDigitalOption）"""
+	return tool_def.tool_create('McpDoubleDigitalOption', args)
 
 
 def McpVanillaBarriers(*args):
@@ -137,6 +185,10 @@ def McpBillFutureCurveData(*args):
 	return tool_def.tool_create('McpBillFutureCurveData', args)
 
 
+def McpFRACurveData(*args):
+	return tool_def.tool_create('McpFRACurveData', args)
+
+
 def McpVanillaSwapCurveData(*args):
 	return tool_def.tool_create('McpVanillaSwapCurveData', args)
 
@@ -160,4 +212,76 @@ def McpCapFloor(*args):
 
 def McpHistVols(*args):
 	return tool_def.tool_create('McpHistVols', args)
+
+
+def McpFXForwardOutright(*args):
+	return tool_def.tool_create('McpFXForwardOutright', args)
+
+
+def McpBond(*args):
+	return tool_def.tool_create('McpBond', args)
+
+
+def McpCallableBond(*args):
+	return tool_def.tool_create('McpCallableBond', args)
+
+
+def McpCommodityFutureAdapter(*args):
+	return tool_def.tool_create('McpCommodityFutureAdapter', args)
+
+
+def McpVanillaSwapAdapter(*args):
+	return tool_def.tool_create('McpVanillaSwapAdapter', args)
+
+
+def McpXCurrencySwapAdapter(*args):
+	return tool_def.tool_create('McpXCurrencySwapAdapter', args)
+
+
+def McpRepoAdapter(*args):
+	return tool_def.tool_create('McpRepoAdapter', args)
+
+
+def McpFundAdapter(*args):
+	return tool_def.tool_create('McpFundAdapter', args)
+
+
+def McpFXNDFAdapter(*args):
+	return tool_def.tool_create('McpFXNDFAdapter', args)
+
+
+def McpFXForwardSwapAdapter(*args):
+	return tool_def.tool_create('McpFXForwardSwapAdapter', args)
+
+
+def McpFXOptionsAdapter(*args):
+	return tool_def.tool_create('McpFXOptionsAdapter', args)
+
+
+def McpStructuredDerivativeProductAdapter(*args):
+	return tool_def.tool_create('McpStructuredDerivativeProductAdapter', args)
+
+
+def McpEquitySpotAdapter(*args):
+	return tool_def.tool_create('McpEquitySpotAdapter', args)
+
+
+def McpEquityFutureAdapter(*args):
+	return tool_def.tool_create('McpEquityFutureAdapter', args)
+
+
+def McpBondFutureAdapter(*args):
+	return tool_def.tool_create('McpBondFutureAdapter', args)
+
+
+def McpBondAdapter(*args):
+	return tool_def.tool_create('McpBondAdapter', args)
+
+
+def McpEquityOptionAdapter(*args):
+	return tool_def.tool_create('McpEquityOptionAdapter', args)
+
+
+def McpCommodityOptionAdapter(*args):
+	return tool_def.tool_create('McpCommodityOptionAdapter', args)
 

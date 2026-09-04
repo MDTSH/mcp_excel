@@ -1,0 +1,84 @@
+# ============================================================================
+# 区间累计收益凭证（Range Accrual）产品结构定义
+# ============================================================================
+#
+# 产品概述:
+# 区间累计收益凭证是一种根据价格在区间内的天数累计收益的产品。
+# - 观察条件：每日观察价格是否在区间内
+# - 支付条件：价格在区间内时累计高票息，否则累计低票息
+# - 支付方式：到期时按累计天数比例支付收益
+#
+# 典型参数示例:
+#    - 期初价格: 100
+#    - 下区间: 90% (LowerBarPercentage)
+#    - 上区间: 110% (UpperBarPercentage)
+#    - 低票息: 3% (LowYield)
+#    - 高票息: 10% (HighYield)
+#
+# ============================================================================
+
+packages:
+  - name: RangeAccrual
+    structure:
+      buy_sell_field: ""
+      
+      dates:
+        - StartDate
+        - ExpiryDate
+        - EndDate
+      
+      strikes:
+        - ObservationPrice
+      
+      barriers: []
+      
+      ko_barriers: []
+      
+      yields: []
+      
+      percentages:
+        - LowerBarPercentage
+        - UpperBarPercentage
+      
+      arguments:
+        - HighYield
+        - LowYield
+      
+      amounts:
+        - Notional
+      
+      calendars:
+        - Calendar
+      
+      basis: Act360
+    
+    schedules:
+      - name: ObservationSchedule
+        start: "@StartDate"
+        end: "@EndDate"
+        frequency: Daily
+        calendar: "@Calendar"
+        date_adjuster: Following
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+    
+    payoff:
+      ReferenceDate: |
+        S0 = ObservationPrice
+        LowerBarrier = S0 * LowerBarPercentage
+        UpperBarrier = S0 * UpperBarPercentage
+        M1 = 0
+        M2 = 0
+        N = 0
+        
+      ObservationSchedule: |
+        N = N + 1
+        if (Spot() >= LowerBarrier and Spot() <= UpperBarrier) then
+          M1 = M1 + 1
+        else
+          M2 = M2 + 1
+        endIf
+        
+      EndDate: |
+        opt pays Notional * (HighYield * M1 / N + LowYield * M2 / N) * t()

@@ -1,0 +1,114 @@
+# ============================================================================
+# FCN（Fixed Coupon Note，固定派息票据）产品结构定义
+# ============================================================================
+#
+# 产品概述:
+# FCN是一种固定派息的自动赎回票据。
+# - 观察条件：锁定期后按月观察敲出/派息，到期日观察敲入
+# - 敲出条件：价格 ≥ 敲出价格（锁定期后）
+# - 敲入条件：价格 ≤ 敲入价格（到期日观察）
+# - 支付方式：敲出时支付敲出票息，未敲出时无条件固定派息，敲入时本金按标的表现结算
+#
+# 典型参数示例:
+#    - 期初价格: 100
+#    - 敲出价格: 103% (UpperBarPercentage)
+#    - 敲入价格: 80% (LowerBarPercentage)
+#    - 固定派息票息: 1.5% (HighYield)
+#    - 锁定期: 1个月 (LockPeriod)
+#
+# ============================================================================
+
+packages:
+  - name: FCN
+    structure:
+      buy_sell_field: ""
+      
+      dates:
+        - ReferenceDate
+        - StartDate
+        - ExpiryDate
+        - EndDate
+      
+      strikes:
+        - ObservationPrice
+      
+      barriers: []
+      
+      ko_barriers: []
+      
+      yields:
+        - HighYield
+      
+      percentages:
+        - UpperBarPercentage
+        - LowerBarPercentage
+      
+      arguments:
+        - LockPeriod
+      
+      amounts:
+        - Notional
+      
+      calendars:
+        - Calendar
+      
+      basis: Act360
+    
+    schedules:
+      - name: ObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Monthly
+        calendar: "@Calendar"
+        date_adjuster: Following
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+    
+    payoff:
+      ReferenceDate: |
+        S0 = ObservationPrice
+        UpperBarrier = S0 * UpperBarPercentage
+        LowerBarrier = S0 * LowerBarPercentage
+        IsKnockedOut = 0
+        IsKnockedIn = 0
+        AccruedCoupons = 0
+        LockPeriod = 1
+        
+      ObservationSchedule: |
+        if (IsKnockedOut = 0) then
+          MonthsFromStart = t() * 12
+          
+          if (MonthsFromStart >= LockPeriod and Spot() >= UpperBarrier) then
+            IsKnockedOut = 1
+            KO_Coupon = Notional * (HighYield / 100.0) * t()
+            AccruedCoupons = AccruedCoupons + KO_Coupon
+          else
+            CurrentCoupon = Notional * (HighYield / 100.0)
+            AccruedCoupons = AccruedCoupons + CurrentCoupon
+          endIf
+        endIf
+        
+      ExpiryDate: |
+        if (IsKnockedOut = 1) then
+          FinalYield = AccruedCoupons / Notional
+        else
+          if (Spot() <= LowerBarrier) then
+            IsKnockedIn = 1
+          endIf
+          
+          TotalCoupons = AccruedCoupons
+          
+          if (IsKnockedIn = 0) then
+            FinalYield = TotalCoupons / Notional
+          else
+            FinalPrice = Spot()
+            PriceRatio = FinalPrice / S0
+            if (PriceRatio < 0) then PriceRatio = 0 endIf
+            PrincipalPnl = PriceRatio - 1.0
+            FinalYield = (TotalCoupons / Notional) + PrincipalPnl
+          endIf
+        endIf
+      
+      EndDate: |
+        opt pays Notional * FinalYield

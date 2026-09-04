@@ -1,0 +1,121 @@
+# ============================================================================
+# 鲨鱼鳍结构场外衍生品（SharkFin）产品结构定义
+# ============================================================================
+#
+# 产品概述:
+# 鲨鱼鳍是一种带敲出保护的收益凭证。
+# - 观察条件：每日观察是否敲出
+# - 敲出条件：看涨时价格 ≥ 敲出价，看跌时价格 ≤ 敲出价
+# - 支付方式：敲出时支付中间票息，未敲出时按价格表现支付收益（有上限）
+#
+# 典型参数示例:
+#    - 期初价格: 100
+#    - 敲出价: 105% (BarrierPercentage)
+#    - 参与率: 1.0 (ParticipateRate)
+#    - 低票息: 3% (LowYield)
+#    - 中间票息: 6.5% (MidYield)
+#    - 高票息上限: 10% (HighYield)
+#    - 期权类型: Call=0, Put=1 (CallPutType)
+#
+# ============================================================================
+
+packages:
+  - name: SharkFin
+    structure:
+      buy_sell_field: BuySell
+      
+      dates:
+        - StartDate
+        - EndDate
+        - ExpiryDate
+        - PremiumDate
+      
+      strikes:
+        - ObservationPrice
+      
+      barriers: []
+      
+      ko_barriers: []
+      
+      yields: []
+      
+      percentages:
+        - ParticipateRate
+        - BarrierPercentage
+      
+      arguments:
+        - LowYield
+        - MidYield
+        - HighYield
+        - CallPutType
+      
+      amounts:
+        - Notional
+      
+      calendars:
+        - Calendar
+      
+      basis: Act360
+    
+    schedules:
+      - name: ObservationSchedule
+        start: "@StartDate"
+        end: "@EndDate"
+        frequency: Daily
+        calendar: "@Calendar"
+        date_adjuster: Actual
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+    
+    payoff:
+      ReferenceDate: |
+        S0 = ObservationPrice
+        Barrier = S0 * BarrierPercentage
+        IsKnockedOut = 0
+        Yield = 0
+        type = 0
+        tt = 0
+        tx = 0
+        N = 1
+        N_KO = 0
+        N_LOW = 0
+        
+      ObservationSchedule: |
+        if (CallPutType = 0) then
+          if (IsKnockedOut = 0 and Spot() >= Barrier) then
+            IsKnockedOut = 1
+          endIf
+        else
+          if (IsKnockedOut = 0 and Spot() < Barrier) then
+            IsKnockedOut = 1
+          endIf
+        endIf
+        
+      ExpiryDate: |
+        if (IsKnockedOut = 1) then
+          Yield = MidYield
+          N_KO = 1
+        else
+          if (CallPutType = 0) then
+            Yield = LowYield + (max(0, Spot() - S0) / S0) * ParticipateRate
+            if (Spot() < S0) then
+              N_LOW = 1
+            endIf
+          else
+            Yield = LowYield + (max(0, S0 - Spot()) / S0) * ParticipateRate
+            if (Spot() > S0) then
+              N_LOW = 1
+            endIf
+          endIf
+        endIf
+        if (Yield > HighYield) then
+          Yield = HighYield
+        endIf
+        
+      EndDate: |
+        opt pays Notional * Yield * t()
+        df pays N / N
+        ratio1 pays N_KO / N / df
+        ratio2 pays N_LOW / N / df
+

@@ -1,7 +1,6 @@
 import logging
 import os
 
-import markdown
 # 延迟导入 matplotlib 以避免 NumPy 2.0 兼容性问题
 # import matplotlib.pyplot as plt
 # from matplotlib.gridspec import GridSpec
@@ -12,6 +11,7 @@ import re
 import ast
 import math
 from mcp.optional_deps import numpy as np
+from mcp.optional_deps import require
 
 class XssLVPlot:
 
@@ -219,7 +219,9 @@ class XssLVPlot:
         # 使用与XssMCPlot完全相同的方式处理markdown，确保表格能正确解析
         # 注意：直接使用 md_content（字符串），而不是重新拼接 lines，以保持原始格式
         # 将Markdown内容转换为HTML，使用扩展以支持表格和中文
-        html = markdown.markdown(md_content, extensions=['markdown.extensions.tables', 'markdown.extensions.codehilite'])
+        html = require("markdown", feature="LocalVol/MC HTML report").markdown(
+            md_content, extensions=['markdown.extensions.tables', 'markdown.extensions.codehilite']
+        )
         
         # 更新HTML中的图片引用（在生成HTML之后）
         if img_content1_final:
@@ -422,7 +424,9 @@ class XssMCPlot:
         plot_data2 = XssMCPlot.extract_plot2_data(md_content)
 
         # 将Markdown内容转换为HTML，使用扩展以支持表格和中文
-        html = markdown.markdown(md_content, extensions=['markdown.extensions.tables', 'markdown.extensions.codehilite'])
+        html = require("markdown", feature="LocalVol/MC HTML report").markdown(
+            md_content, extensions=['markdown.extensions.tables', 'markdown.extensions.codehilite']
+        )
 
         # print(html)
         file_image1 = f"{unique_id}_plot1.png"

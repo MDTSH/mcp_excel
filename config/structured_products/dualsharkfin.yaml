@@ -1,0 +1,124 @@
+# ============================================================================
+# 双鲨鱼鳍结构场外衍生品（Dual SharkFin）产品结构定义
+# ============================================================================
+#
+# 产品概述:
+# 双鲨鱼鳍是一种带敲出保护的收益凭证。
+# - 观察条件：每月观察是否敲出
+# - 敲出条件：价格 < 下敲出价 或 价格 > 上敲出价
+# - 支付方式：敲出时支付中间票息，未敲出时按价格表现支付收益（有上限）
+#
+# 典型参数示例:
+#    - 期初价格: 100
+#    - 下敲出价: 80% (LowerBarPercentage)
+#    - 上敲出价: 120% (UpperBarPercentage)
+#    - 参与率: 1.0 (ParticipateRate)
+#    - 低票息: 3% (LowYield)
+#    - 中间票息: 6.5% (MidYield)
+#    - 高票息上限: 10% (HighYield)
+#
+# ============================================================================
+
+packages:
+  - name: DualSharkFin
+    structure:
+      buy_sell_field: BuySell
+
+      dates:
+        - StartDate
+        - EndDate
+        - ExpiryDate
+        - PremiumDate
+
+      strikes:
+        - ObservationPrice
+
+      barriers: []
+
+      ko_barriers: []
+
+      yields:
+        - LowYield
+        - MidYield
+        - HighYield
+
+      percentages:
+        - ParticipateRate
+        - LowerBarPercentage
+        - UpperBarPercentage
+
+      arguments: []
+
+      amounts:
+        - Notional
+
+      calendars:
+        - Calendar
+
+      basis: Act360
+
+    schedules:
+      - name: ObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Monthly
+        calendar: "@Calendar"
+        date_adjuster: Actual
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+
+    payoff:
+      ReferenceDate: |
+        S0 = ObservationPrice
+        LowerBarrier = S0 * LowerBarPercentage
+        UpperBarrier = S0 * UpperBarPercentage
+        IsKnockedOut = 0
+        Yield = 0
+        MidYield = 0.065
+        N = 1
+        N_KO = 0
+        N_LOW = 0
+        M = 1
+
+        first_observation = 1
+        first_observation_date_to_reference_date = 0
+        last_observation_date_to_reference_date = 0
+
+      ObservationSchedule: |
+        if (IsKnockedOut = 0 and (Spot() < LowerBarrier or Spot() > UpperBarrier)) then
+          IsKnockedOut = 1
+        endIf
+        if (first_observation = 2) then
+          first_observation_date_to_reference_date = t() * 365
+        endIf
+        first_observation = first_observation + 1
+
+      ExpiryDate: |
+        if (IsKnockedOut = 0) then
+          Yield = MidYield
+          N_KO = N_KO + 1
+        else
+          if (Spot() >= S0) then
+            Yield = LowYield + ParticipateRate * (max(0, Spot() - S0)) / S0
+            N_LOW = N_LOW + 1
+          endIf
+          if (Spot() < S0) then
+            Yield = LowYield + ParticipateRate * (max(0, S0 - Spot())) / S0
+            N_LOW = N_LOW + 1
+          endIf
+        endIf
+        if (Yield > HighYield) then
+          Yield = HighYield
+        endIf
+
+        last_observation_date_to_reference_date = t() * 365
+        M = Spot()
+
+      EndDate: |
+        opt pays Notional * Yield * t()
+
+        ko_ratio = N_KO / N
+        k_low_ratio = N_LOW / N
+        f = first_observation_date_to_reference_date / last_observation_date_to_reference_date
+        k_low_ratio_next = ko_ratio * f

@@ -1,0 +1,93 @@
+# ============================================================================
+# 三重区间看涨收益凭证（Triple Ranges Call）产品结构定义
+# ============================================================================
+#
+# 产品概述:
+# 三重区间看涨收益凭证是一种根据到期价格所在区间支付不同收益的产品。
+# - 观察条件：到期日观察
+# - 支付条件：根据价格所在区间（低/中/高）支付不同票息
+# - 支付方式：到期时按价格所在区间支付对应票息
+#
+# 典型参数示例:
+#    - 期初价格: 100
+#    - 下区间: 90% (LowerBarPercentage)
+#    - 上区间: 110% (UpperBarPercentage)
+#    - 低票息: 3% (LowYield)
+#    - 中票息: 6% (MidYield)
+#    - 高票息: 10% (HighYield)
+#
+# ============================================================================
+
+packages:
+  - name: TrippleRangesCall
+    structure:
+      buy_sell_field: BuySell
+      
+      dates:
+        - StartDate
+        - ExpiryDate
+        - EndDate
+      
+      strikes:
+        - ObservationPrice
+      
+      barriers: []
+      
+      ko_barriers: []
+      
+      yields: []
+      
+      percentages:
+        - LowerBarPercentage
+        - UpperBarPercentage
+      
+      arguments:
+        - HighYield
+        - MidYield
+        - LowYield
+      
+      amounts:
+        - Notional
+      
+      calendars:
+        - Calendar
+      
+      basis: Act360
+    
+    schedules: []
+    
+    payoff:
+      StartDate: |
+        S0 = ObservationPrice
+        LowerBarrier = S0 * LowerBarPercentage
+        UpperBarrier = S0 * UpperBarPercentage
+        yield = 0
+        N = 0
+        M = 0
+        M1 = 0
+        M2 = 0
+        
+      ReferenceDate: |
+
+        
+      ExpiryDate: |
+        N = N + 1
+        if (Spot() <= LowerBarrier) then
+          yield = LowYield
+          M1 = M1 + 1
+        endIf
+        if (Spot() <= UpperBarrier and Spot() > LowerBarrier) then
+          yield = MidYield
+          M = M + 1
+        endIf
+        if (Spot() > UpperBarrier) then
+          yield = HighYield
+          M2 = M2 + 1
+        endIf
+        
+      EndDate: |
+        opt pays Notional * yield * t()
+        df pays N / N
+        ratio_in pays M / N / df
+        ratio1 pays M1 / N / df
+        ratio2 pays M2 / N / df

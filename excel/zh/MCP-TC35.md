@@ -12,6 +12,8 @@
 
 数据：`data/market_data/MCP_MARKET_DATA_20260626.json`。主要 Sheet：`Config`（路径 / 估值日 / Manager）、`PillarData`（Direct 引用的 pillar）、`Compare_YC2` / `Compare_FXFP2` / `Compare_Cross2`（RawMD vs Direct）、`Curve_From2`（GetCurve vs MidFrom2）。F9 后同 tenor 的 Diff 应接近 0。
 
+> **打开即可用**：请下载 [TC31–TC46 完整案例包](/download/MCP-TC31-46-LiveStoreRawMD.zip)（含全部工作簿和共用的 `data/`）。解压后打开 `zh` 目录里的 xlsx。只下单个工作簿时，必须把包里的 `data` 文件夹放到与 xlsx **同一目录**。
+
 [下载 MCP-TC35-CrossFXFP2RawMDvsDirect.xlsx](./MCP-TC35-CrossFXFP2RawMDvsDirect.xlsx)
 
 ## **对象链**

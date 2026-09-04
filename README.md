@@ -6,7 +6,7 @@
 [![Python 3.9–3.13](https://img.shields.io/badge/python-3.9--3.13-blue.svg)](https://www.python.org/downloads/)
 [![PyXLL](https://img.shields.io/badge/PyXLL-Required-orange.svg)](https://www.pyxll.com/)
 
-**Release**: v1.6 (2026-08-31) · package `mcp_excel_1.6.20260831.zip` · kernel `1.6.15103`
+**Release**: v1.6 (2026-09-04) · package `mcp_excel_1.6.20260904.zip` · kernel `1.6.15103`
 
 A comprehensive Python library for **Fixed Income, Currency, and Commodities (FICC)** derivatives pricing and risk management. MCP provides professional-grade tools for financial institutions, trading desks, and quantitative analysts, with **seamless Excel integration** that allows users to create complex financial models and templates directly within Excel spreadsheets.
 
@@ -103,7 +103,7 @@ Customized structured options linked to interest rates, FX rates, commodities, a
 
 #### GPU (optional)
 
-Default is **CPU** (`MCP_RUNMODE = CPU` in `lib\X64\pyxll.cfg`). This package ships `cudart64_12.dll` and `curand64_10.dll`. GPU mode also needs a supported NVIDIA driver; it is not required for a normal install.
+Default is **MCPU** (`MCP_RUNMODE = MCPU` in `lib\X64\pyxll.cfg`). This package ships `cudart64_12.dll` and `curand64_10.dll`. GPU mode also needs a supported NVIDIA driver; it is not required for a normal install.
 
 ## 🛠️ Installation
 

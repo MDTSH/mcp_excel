@@ -11,6 +11,8 @@ FX-implied USD yield: load JSON `USDDEPO_IMPLIED` (`CNHDEPO` + `USDCNH_FXFP_BGN`
 
 Data: `data/market_data/MCP_MARKET_DATA_20260626.json`, valuation date 2026-06-26. Key sheets: `Config` (shared Manager), `RawMD`, `Direct`, `Compare` (cross-sheet curve refs). After F9, `YieldCurveZeroRate` on both paths should align.
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC36-ImpliedYieldCurve.xlsx](./MCP-TC36-ImpliedYieldCurve.xlsx)
 
 ## **Object chain**

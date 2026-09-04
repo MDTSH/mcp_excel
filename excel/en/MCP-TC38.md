@@ -11,6 +11,8 @@ Embedded-bond BondCurve bootstrap for CGB / CDB: `McpBillCurveData` + `McpFixedR
 
 Key sheets: `CGB` (CGB_v9, valuation 2026-04-13), `CDB` (CDB_v3 + 1Y fill), `RawMD` (`MCP_MARKET_DATA_20260626.json`, valuation 2026-06-26). After F9 each sheet should show a curve handle and populated reads.
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC38-BondCurveBootstrap.xlsx](./MCP-TC38-BondCurveBootstrap.xlsx)
 
 ## **Object chain**

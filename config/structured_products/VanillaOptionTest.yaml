@@ -1,0 +1,96 @@
+# ============================================================================
+# 欧式简单期权（Vanilla European Option）测试用例
+# ============================================================================
+#
+# 测试场景参数:
+#   - CallPut: Call (0)
+#   - ReferenceDate: 1/23/2026
+#   - SpotPx: 4706.004
+#   - ExpiryDate: 4/23/2026
+#   - DeliveryDate: 4/25/2026
+#   - StrikePx: 4700
+#   - RiskFreeRate: 1.59%
+#   - Dividend: 2.12%
+#   - Volatility: 19.41%
+#   - PremiumDate: 1/25/2026
+#   - Calendar: McpCalendar@4
+#   - DayCounter: Act365Fixed
+#   - BuySell: Buy
+#   - FaceAmount: 1
+#
+# BS模型参考结果:
+#   - Price: 179.84
+#   - Delta: 0.52
+#   - Gamma: 0.04
+#   - Vega: 9.26
+#   - Theta: -0.96
+#   - Rho: 5.55
+#
+# ============================================================================
+
+packages:
+  - name: VanillaOptionTest
+    structure:
+      buy_sell_field: BuySell
+      
+      dates:
+        - StartDate          # 期初日期
+        - EndDate            # 期末日期（结算日，对应DeliveryDate）
+        - ExpiryDate         # 到期日（行权日）
+        - PremiumDate        # 保费支付日
+      
+      strikes:
+        - Strike             # 执行价格（对应StrikePx）
+      
+      barriers: []
+      
+      ko_barriers: []
+      
+      yields: []
+      
+      percentages: []
+      
+      arguments:
+        - CallPut            # 期权类型（Call=0, Put=1）
+      
+      amounts:
+        - Notional           # 名义金额（对应FaceAmount）
+      
+      calendars:
+        - Calendar
+      
+      basis: Act365Fixed     # 对应DayCounter
+      
+      # VaR 配置
+      var_config:
+        enabled: false
+        default_horizons: []
+      
+      # PFE 配置
+      pfe_config:
+        enabled: false
+        default_horizons: []
+    
+    schedules: []
+    
+    payoff:
+      StartDate: |
+        S0 = InitialPrice       # 期初价格（对应SpotPx）
+        K = Strike              # 执行价格（对应StrikePx）
+        return = 0              # 初始化收益为0
+
+      
+      ExpiryDate: |
+        # 欧式期权：在到期日计算收益
+        # CallPut = 0 表示看涨期权（Call），CallPut = 1 表示看跌期权（Put）
+        if (CallPut = 0) then
+          # 看涨期权：收益 = max(到期价格 - 执行价格, 0)
+          return = max(Spot() - K, 0)
+        else
+          # 看跌期权：收益 = max(执行价格 - 到期价格, 0)
+          return = max(K - Spot(), 0)
+        endIf
+      
+      EndDate: |
+        # 在结算日支付收益
+        opt pays return * Notional

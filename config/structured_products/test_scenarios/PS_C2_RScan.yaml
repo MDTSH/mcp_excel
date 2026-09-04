@@ -1,0 +1,74 @@
+# ============================================================================
+# PS-C2: 重复seed稳定性（R-scan Stability Test）
+# ============================================================================
+# 
+# 测试目标：验证MC模拟的seed稳定性
+# - 固定N（比如200k），跑R=30个seed
+# - 断言：
+#   - PV/Greeks的样本均值稳定
+#   - 样本方差与理论SE同数量级
+#   - 这一步非常适合做回归：代码变更后如果均值显著偏移（超过3SE），报警
+# 
+# 预期结果：
+# - PV的样本均值稳定
+# - PV的样本方差与理论SE同数量级
+# - 适合用于回归测试
+# ============================================================================
+
+test_scenario:
+  name: "PS-C2: R-scan Stability Test"
+  product_id: "ProtectedSnowball"
+  description: "验证MC模拟的重复seed稳定性"
+  
+  # 使用真实波动率（非零），测试seed稳定性
+  path_type: "stability"
+  volatility: 0.20  # 20%波动率，中等触发概率
+  spot_path: "stochastic"  # 随机路径
+  
+  # 产品参数（中等触发概率）
+  parameters:
+    InitialPrice: 100.0
+    ObservationPrice: 100.0
+    UpperBarPercentage: 1.03  # 103%，中等KO概率
+    LowerBarPercentage: 0.80  # 80%，中等KI概率
+    KnockOutReturnRate: 0.18
+    DividendCouponRate: 0.20
+    MinReturnRate: 0.02
+    KnockInMinReturnRate: -0.20
+    StrikePercentage: 1.0
+    ParticipationRate: 1.0
+    KnockOutStepAdjustment: 0.005
+    Notional: 1000000.0
+    BuySell: "Sell"
+  
+  # 日期设置
+  dates:
+    ReferenceDate: "2026/1/26"
+    StartDate: "2026/1/26"
+    ObservationStartDate: "2026/2/5"
+    ExpiryDate: "2027/1/26"
+    EndDate: "2027/1/28"
+    PremiumDate: "2026/1/26"
+  
+  # 市场参数
+  market:
+    RiskFreeRate: 0.03
+    Dividend: 0.0
+    Volatility: 0.20  # 20%波动率
+    DayCounter: "Act365Inclusive"
+  
+  # 模拟参数
+  simulation:
+    num_simulations: 200000  # 固定N
+    num_seeds: 30  # R-scan的R值（运行30个不同seed）
+    use_deterministic_path: false  # 使用随机路径
+    use_crn: false  # R-scan不需要CRN
+  
+  # 预期结果（断言）
+  assertions:
+    pv_mean_stability:
+      expected_range: [25000.0, 30000.0]  # PV均值应该在合理范围内
+      description: "PV的样本均值应该稳定且在合理范围内"
+    pv_variance_reasonable:
+      expected_range: [0.0, 1000.0]  # PV的样本方差应该在合理范围内
+      description: "PV的样本方差应该与理论SE同数量级"

@@ -1,0 +1,84 @@
+# ============================================================================
+# PS-B4: KI基本必然（LowerBarrier Set Extremely High）
+# ============================================================================
+# 
+# 测试目标：验证KI基本必然场景下的行为
+# - LowerBarPercentage设置得极高（120%），使得KI基本必然
+# - 预期：在第一个"检查KI的观察日"就会触发
+# - 用途：确认KI检查在KO检查之后执行时仍符合脚本逻辑（代码是先KO再KI）
+# 
+# 预期结果：
+# - P_KI≈1
+# - IsKnockedIn=1
+# - KI在第1个观察日触发
+# - 到期走"未敲出已敲入"分支
+# ============================================================================
+
+test_scenario:
+  name: "PS-B4: KI Inevitable (LowerBarrier Set Extremely High)"
+  product_id: "ProtectedSnowball"
+  description: "验证KI基本必然场景下的行为"
+  
+  # 确定性路径设置（σ=0，恒定价格）
+  path_type: "deterministic"
+  volatility: 0.0
+  spot_path: "constant"
+  spot_value: 100.0
+  
+  # 产品参数
+  parameters:
+    InitialPrice: 100.0
+    ObservationPrice: 100.0
+    UpperBarPercentage: 1.10  # 110%，KO价格=110，spot=100<110，永不KO
+    LowerBarPercentage: 1.20  # 120%，KI价格=120，spot=100<=120，必然KI
+    KnockOutReturnRate: 0.18
+    DividendCouponRate: 0.20
+    MinReturnRate: 0.02
+    KnockInMinReturnRate: -0.20
+    StrikePercentage: 1.0
+    ParticipationRate: 1.0
+    KnockOutStepAdjustment: 0.005
+    Notional: 1000000.0
+    BuySell: "Sell"
+  
+  # 日期设置
+  dates:
+    ReferenceDate: "2026/1/26"
+    StartDate: "2026/1/26"
+    ObservationStartDate: "2026/2/5"
+    ExpiryDate: "2027/1/26"
+    EndDate: "2027/1/28"
+    PremiumDate: "2026/1/26"
+  
+  # 市场参数
+  market:
+    RiskFreeRate: 0.03
+    Dividend: 0.0
+    Volatility: 0.0  # 确定性场景，零波动
+    DayCounter: "Act365Inclusive"
+  
+  # 模拟参数
+  simulation:
+    num_simulations: 1000  # 确定性场景可以用较少模拟次数
+    seed: 12345
+    use_deterministic_path: true  # 关键：使用确定性路径
+  
+  # 预期结果（断言）
+  assertions:
+    P_KO:
+      expected: 0.0
+      tolerance: 0.01
+      description: "敲出概率应为0（spot < KO价格）"
+    P_KI:
+      expected: 1.0
+      tolerance: 0.01
+      description: "敲入概率应为1（KI价格极高，spot必然达到）"
+    IsKnockedOut:
+      expected: 0
+      description: "最终状态：未敲出"
+    IsKnockedIn:
+      expected: 1
+      description: "最终状态：已敲入"
+    FinalCashflow:
+      expected_range: [-200000.0, 50000.0]  # 考虑敲入保护后的范围
+      description: "最终现金流应为敲入收益+最低收益（考虑折现）"

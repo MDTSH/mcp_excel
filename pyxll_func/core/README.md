@@ -15,6 +15,7 @@ pyxll_func/core/
 ├── curve.py                 # Yield curve core module
 ├── volatility.py            # Volatility model core module
 ├── mcp_calendar.py          # Calendar utility module
+├── mcp_lifecycle.py           # Workbook close: clear LiveStore/RawMD caches (load last in pyxll.cfg)
 ├── mcp_server_mktdata.py    # Market data module
 ├── server_factory.py        # Server factory module
 ├── xscript.py               # Script execution module
@@ -34,6 +35,7 @@ pyxll_func/core/
 
 ### 2. Auxiliary Function Modules
 - **mcp_calendar.py**: Calendar tools, handling trading calendars and date calculations
+- **mcp_lifecycle.py**: Clears LiveStore/RawMD caches when Excel workbooks close; **must be last** in `pyxll.cfg` modules
 - **mcp_server_mktdata.py**: Market data acquisition and processing
 - **server_factory.py**: Server factory, providing new APIs with _Svr suffix
 - **xscript.py**: Script execution functionality
@@ -41,6 +43,13 @@ pyxll_func/core/
 
 ### 3. Utility Function Modules
 - **utils.py**: General utility functions, including string processing, array operations, mathematical calculations
+
+### 4. Market Data UDFs (custom/)
+JSON market data LiveStore / RawMD / JsonReader UDFs live under `pyxll_func/custom/`:
+- **mcp_market_data_live.py**: `McpLiveMarketDataStore`, `mdlsGet*`, `McpMarketDataJsonReader`, `mdjsonGet*`
+- **mcp_raw_market_data.py**: `McpRawMarketManager`, `rawmdGet*`
+
+Register in `pyxll.cfg` **before** `mcp_lifecycle` (which must be last).
 
 ## Code Standards
 

@@ -1,0 +1,121 @@
+# ============================================================================
+# Price-It 风格 Knock-Out 自动赎回产品（CALL/PUT 通用）
+# ============================================================================
+#
+# 与 CSI500KickOut.yaml 的主要差异：
+#   1. 把"期权费"从 opt pays 中独立出来（fee pays），让：
+#        PV  = 不含期权费的衍生品折现期望（与 Price-It Price/PV 口径一致）
+#        NPV = PV + Fee 折现期望（与 Price-It NPV 口径一致；客户最终净现金流）
+#      这样可以在 Python/C++ 端实现独立的 NPV 接口，无需把期权费写死在 PV 里。
+#   2. 增加常用 collectors：
+#        Knockout      - 敲出概率（=1-Alive）
+#        Alive         - 存续概率
+#        KnockoutProb  - 兼容老接口
+#        IndexSpotEnd  - EndDate 的"期望 Spot"（已用 numeraire 归一）
+#        DfNumeraire   - E[DF]，用作归一化分母
+#   3. 支持 BarrierType=CALL/PUT（缺省 CALL），与 Price-It 一致。
+#
+# Price-It 合约要素映射：
+#   StartDate           -> StartDate
+#   ExpiryDate          -> 最后观察日（ObservationSchedule 终止日）
+#   EndDate             -> 支付日（= OptionFeeDate = PayoffDate）
+#   BarrierLevel        -> 敲出绝对水平
+#   BarrierType         -> CALL(>=) / PUT(<=)
+#   HigherRate          -> 敲出年化票息率（小数）
+#   LowerRate           -> 未敲出年化票息率（小数）
+#   OptionFee           -> 期权费金额
+#   OptionFeePayRcv     -> 1=Receive, -1=Pay
+#   FloatingPayRcv      -> 浮动端方向，1=Receive, -1=Pay
+#
+# 关于 KnockoutMaturity：
+#   Price-it 使用 DCF(StartDate, ObsDate + 2b, Actual/360)，不能在 payoff 里写死 +2 日历日。
+#   准确做法见 PriceItKickOutT2.yaml + paymentschedule/dates（= CalendarAddBusinessDays(Obs,2)）
+#
+# 历史 Fixing：
+#   通过 FixingDates / FixingRates 注入；对 AsOfDate 之前的观察日，引擎自动
+#   用 fixing 替代 MC spot。至少需提供首个观察日的 fixing。
+#
+# 自定义观察日：
+#   传 observationschedule/dates = ["YYYYMMDD",...] 覆盖 YAML 中的 Monthly 频率。
+# ============================================================================
+
+packages:
+  - name: PriceItKickOut
+    structure:
+      buy_sell_field: ""
+
+      dates:
+        - StartDate         # 合约起始日（可在 AsOfDate 之前）
+        - ExpiryDate        # 最后观察日
+        - EndDate           # 支付日（= OptionFeeDate = PayoffDate）
+
+      strikes:
+        - BarrierLevel      # 敲出绝对价格水平
+
+      barriers: []
+      ko_barriers: []
+      yields: []
+      percentages: []
+
+      arguments:
+        - HigherRate        # 敲出年化票息率（小数）
+        - LowerRate         # 未敲出年化票息率（小数）
+        - OptionFeePayRcv   # 期权费收付方向：1=Receive, -1=Pay
+        - FloatingPayRcv    # 浮动端方向：1=Receive, -1=Pay
+        - BarrierType       # 0=CALL(Spot>=Barrier), 1=PUT(Spot<=Barrier)
+
+      amounts:
+        - Notional
+        - OptionFee
+
+      calendars:
+        - Calendar
+
+      basis: Act360
+
+    schedules:
+      - name: ObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Monthly
+        calendar: "@Calendar"
+        date_adjuster: ModifiedFollowing
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+
+    payoff:
+      StartDate: |
+        IsKnockedOut = 0
+        CouponPayment = 0
+
+      ObservationSchedule: |
+        if (IsKnockedOut = 0) then
+          if (BarrierType = 0) then
+            if (Spot() >= BarrierLevel) then
+              IsKnockedOut = 1
+              KOT = daysBetween("@StartDate", currentDate()) / 360.0
+              CouponPayment = Notional * HigherRate * KOT
+            endIf
+          else
+            if (Spot() <= BarrierLevel) then
+              IsKnockedOut = 1
+              KOT = daysBetween("@StartDate", currentDate()) / 360.0
+              CouponPayment = Notional * HigherRate * KOT
+            endIf
+          endIf
+        endIf
+
+      EndDate: |
+        FinalT = daysBetween("@StartDate", "@EndDate") / 360.0
+        KnockoutCoupon = IsKnockedOut * CouponPayment
+        SurvivalCoupon = (1 - IsKnockedOut) * Notional * LowerRate * FinalT
+        opt           pays FloatingPayRcv * (KnockoutCoupon + SurvivalCoupon)
+        fee           pays OptionFeePayRcv * OptionFee
+        df            pays 1
+        IndexSpotPV   pays Spot()
+        Knockout      pays IsKnockedOut / df
+        Alive         pays (1 - IsKnockedOut) / df
+        KnockoutProb  pays IsKnockedOut / df
+        IndexSpotEnd  pays Spot() / df
+        AnnualizedYield pays (IsKnockedOut * HigherRate + (1 - IsKnockedOut) * LowerRate) / df

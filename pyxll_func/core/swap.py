@@ -16,6 +16,7 @@ Provides Excel functions related to interest rate swaps, including:
 import datetime
 import json
 import logging
+import math
 from typing import Any, Dict, List, Optional, Union
 
 # =========================
@@ -35,6 +36,117 @@ from mcp.utils.mcp_utils import *
 # 注意：如确需通配导入（部分符号运行时注入），可改回:
 # from mcp.utils.mcp_utils import *
 # 但建议尽量显式导入使用到的符号以降低命名污染。
+
+
+def _cf_payment_accr_idx(pay_idx, n_accr, has_initial):
+    if has_initial:
+        return pay_idx - 1 if pay_idx > 0 else -1
+    return pay_idx if pay_idx < n_accr else -1
+
+
+def _cf_period_notional(notionals, accr_idx, pay_idx):
+    """C++ CalculateCashFlow: payment_i = faceValues[accrIdx+1] * rate * yearFrac."""
+    if not notionals or accr_idx < 0:
+        return "N/A"
+    fv_idx = accr_idx + 1
+    if fv_idx < len(notionals):
+        return notionals[fv_idx]
+    if pay_idx < len(notionals):
+        return notionals[pay_idx]
+    return notionals[-1]
+
+
+def _cf_int_payment_and_diff(notional, accr_yf, accr_rate, payment):
+    if notional in ("N/A", None) or accr_yf in ("N/A", None) or accr_rate in ("N/A", None):
+        return "N/A", "N/A"
+    try:
+        n = float(notional)
+        y = float(accr_yf)
+        r = float(accr_rate)
+        p = float(payment)
+    except (TypeError, ValueError):
+        return "N/A", "N/A"
+    raw = n * y * r
+    if p == 0.0:
+        expected = raw
+    else:
+        expected = math.copysign(abs(raw), p)
+    return expected, p - expected
+
+
+def _enrich_cf_payment_audit(po):
+    notional = po.get("Notional", po.get("Notionals", "N/A"))
+    if "_cpp_int_payment" in po:
+        int_pay = po["_cpp_int_payment"]
+    else:
+        int_pay, _ = _cf_int_payment_and_diff(
+            notional, po.get("AccrYearFrac"), po.get("AccrRate"), po.get("Payment")
+        )
+    payment = po.get("Payment")
+    diff = "N/A"
+    try:
+        if int_pay not in ("N/A", None) and payment not in ("N/A", None):
+            diff = float(payment) - float(int_pay)
+    except (TypeError, ValueError):
+        pass
+    po["Notional"] = notional
+    po["IntPayment"] = int_pay
+    po["PaymentDiff"] = diff
+    return po
+
+
+_CF_FIELD_ALIAS = {
+    "PaymentDates": "PaymentDate",
+    "AccrStartDates": "AccrStartDate",
+    "AccrEndDates": "AccrEndDate",
+    "AccrDays": "AccrDay",
+    "AccrRates": "AccrRate",
+    "Notionals": "Notional",
+    "Payments": "Payment",
+    "DiscountFactors": "DiscountFactor",
+    "PVs": "PV",
+    "CumPVs": "CumPV",
+    "CFs": "CF",
+    "PaymentDateYearFracs": "PaymentDateYearFrac",
+}
+
+
+def _load_xccy_leg_notionals(x_currency_swap, is_base_leg):
+    try:
+        if is_base_leg:
+            raw = x_currency_swap.BaseLegNotionals()
+        else:
+            raw = x_currency_swap.TermLegNotionals()
+        return json.loads(raw)
+    except AttributeError:
+        return []
+
+
+def _load_xccy_leg_interest_payments(x_currency_swap, is_base_leg, is_result_term_currency=True):
+    try:
+        if is_base_leg:
+            raw = x_currency_swap.BaseLegInterestPayments(is_result_term_currency)
+        else:
+            raw = x_currency_swap.TermLegInterestPayments(is_result_term_currency)
+        return json.loads(raw)
+    except (AttributeError, TypeError):
+        return []
+
+
+def _load_vanilla_leg_interest_payments(vanilla_swap, is_fixed):
+    try:
+        if is_fixed:
+            raw = vanilla_swap.FixedLegInterestPayments()
+        else:
+            raw = vanilla_swap.FloatingLegInterestPayments()
+        return json.loads(raw)
+    except (AttributeError, TypeError):
+        return []
+
+
+def _cf_row_value(row, field):
+    key = _CF_FIELD_ALIAS.get(field, field)
+    return row.get(key, "N/A")
 
 
 # -------------- Vanilla / Cross Currency Swaps --------------
@@ -63,6 +175,237 @@ def McpVanillaSwap(args1, args2, args3, args4, args5, fmt="VP"):
         logging.warning(args)
         logging.warning(s, exc_info=True)
         return s
+
+
+def _unwrap_mcp_obj(obj):
+    if obj is None:
+        return None
+    if isinstance(obj, str):
+        return obj
+    if hasattr(obj, "getHandler"):
+        return obj.getHandler()
+    return obj
+
+
+def _payment_frequency_override(name) -> int:
+    """Excel 付息频率文本 → C++ Frequency 枚举整型（NoFrequency=-1 表示沿用 convention）。"""
+    if name is None:
+        return -1
+    if isinstance(name, (int, float)) and not isinstance(name, bool):
+        return int(name)
+    s = str(name).strip()
+    if not s or s.lower() in ("nofrequency", "default", "none", "-1"):
+        return -1
+    mapping = {
+        "once": 0,
+        "annual": 1,
+        "semiannual": 2,
+        "quarterly": 4,
+        "monthly": 12,
+        "weekly": 52,
+        "daily": 365,
+    }
+    return mapping.get(s.lower(), 4)
+
+
+def _history_json_arg(val):
+    """McpList / 列表 → JSON 字符串；空历史返回 ''（C++ 缺省）。"""
+    if val is None:
+        return ""
+    if isinstance(val, str):
+        s = val.strip()
+        if not s or s == "[]":
+            return ""
+        try:
+            parsed = json.loads(s)
+            if isinstance(parsed, list) and len(parsed) == 0:
+                return ""
+        except Exception:
+            pass
+    return pf_object_list(val)
+
+
+def _build_currency_swap_leg_rc(
+    rateConvention,
+    estimationCurve,
+    discountCurve,
+    fixingCalendar,
+    paymentFrequency="Quarterly",
+    spreadBps=0.0,
+    targetLegIsTerm=False,
+    keepEndOfMonth=True,
+    historyFixingDates=None,
+    historyFixingRates=None,
+):
+    rc = _unwrap_mcp_obj(rateConvention)
+    est = _unwrap_mcp_obj(estimationCurve)
+    disc = _unwrap_mcp_obj(discountCurve)
+    cal = _unwrap_mcp_obj(fixingCalendar)
+    freq_ov = _payment_frequency_override(paymentFrequency)
+    hd = _history_json_arg(historyFixingDates)
+    hr = _history_json_arg(historyFixingRates)
+    if hd and hr:
+        try:
+            return mcp.mcp.MCurrencySwapLeg(
+                rc,
+                est,
+                disc,
+                cal,
+                hd,
+                hr,
+                freq_ov,
+                float(spreadBps),
+                bool(keepEndOfMonth),
+                None,
+                bool(targetLegIsTerm),
+                cal,  # paymentCalendar：与 fixing 相同，避免 C++ 默认空日历跳过假日调整
+            )
+        except TypeError:
+            logging.warning(
+                "MCurrencySwapLeg 12-arg history overload unavailable; "
+                "rebuild PythonLib/SWIG to enable History on legs."
+            )
+    return mcp.mcp.MCurrencySwapLeg(
+        rc,
+        est,
+        disc,
+        cal,
+        None,
+        None,
+        freq_ov,
+        float(spreadBps),
+        bool(keepEndOfMonth),
+        None,
+        bool(targetLegIsTerm),
+        cal,  # paymentCalendar 回退到 fixingCalendar
+    )
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("rateConvention", "var")
+@xl_arg("estimationCurve", "object")
+@xl_arg("discountCurve", "object")
+@xl_arg("fixingCalendar", "object")
+@xl_arg("paymentFrequency", "str")
+@xl_arg("spreadBps", "float")
+@xl_arg("targetLegIsTerm", "bool")
+@xl_arg("keepEndOfMonth", "bool")
+@xl_arg("historyFixingDates", "var")
+@xl_arg("historyFixingRates", "var")
+def McpCurrencySwapLegRC(
+    rateConvention,
+    estimationCurve,
+    discountCurve,
+    fixingCalendar,
+    paymentFrequency="Quarterly",
+    spreadBps=0.0,
+    targetLegIsTerm=False,
+    keepEndOfMonth=True,
+    historyFixingDates=None,
+    historyFixingRates=None,
+):
+    """
+    RateConvention 重载 MCurrencySwapLeg（10 参数；可选 History JSON，需新 SWIG 12 参重载）。
+    rateConvention: McpRateConvention 对象或 'LPR1Y' 等字符串。
+    spreadBps: 小数利率（非 bp）。
+    """
+    try:
+        return _build_currency_swap_leg_rc(
+            rateConvention,
+            estimationCurve,
+            discountCurve,
+            fixingCalendar,
+            paymentFrequency,
+            spreadBps,
+            targetLegIsTerm,
+            keepEndOfMonth,
+            historyFixingDates,
+            historyFixingRates,
+        )
+    except Exception as e:
+        s = f"McpCurrencySwapLegRC except: {e}"
+        logging.warning(s, exc_info=True)
+        return s
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("rateConvention", "var")
+@xl_arg("estimationCurve", "object")
+@xl_arg("discountCurve", "object")
+@xl_arg("fixingCalendar", "object")
+@xl_arg("historyFixingDates", "var")
+@xl_arg("historyFixingRates", "var")
+@xl_arg("paymentFrequency", "str")
+@xl_arg("spreadBps", "float")
+@xl_arg("keepEndOfMonth", "bool")
+@xl_arg("targetLegIsTerm", "bool")
+def McpCurrencySwapLegVP(
+    rateConvention,
+    estimationCurve,
+    discountCurve,
+    fixingCalendar,
+    historyFixingDates="[]",
+    historyFixingRates="[]",
+    paymentFrequency="Quarterly",
+    spreadBps=0.0,
+    keepEndOfMonth=True,
+    targetLegIsTerm=False,
+):
+    """
+    RateConvention 腿构造（与 args_def VP 字段一致；避免 McpCurrencySwapLeg KV+VP 在旧绑定上 overload 失败）。
+    History 非空时优先 12 参 char* 重载（需重编译 PythonLib）；否则回退 10 参 RC 路径。
+    """
+    try:
+        return _build_currency_swap_leg_rc(
+            rateConvention,
+            estimationCurve,
+            discountCurve,
+            fixingCalendar,
+            paymentFrequency,
+            spreadBps,
+            targetLegIsTerm,
+            keepEndOfMonth,
+            historyFixingDates,
+            historyFixingRates,
+        )
+    except Exception as e:
+        s = f"McpCurrencySwapLegVP except: {e}"
+        logging.warning(s, exc_info=True)
+        return s
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("args1", "var[][]")
+@xl_arg("args2", "var[][]")
+@xl_arg("args3", "var[][]")
+@xl_arg("args4", "var[][]")
+@xl_arg("args5", "var[][]")
+@xl_arg("fmt", "str")
+def McpBasisSwap(args1, args2, args3, args4, args5, fmt="VP"):
+    """
+    创建同币种基差互换对象（如 FR007 vs LPR1Y），支付/定盘周期由 RateConvention 决定。
+    """
+    args = [args1, args2, args3, args4, args5, fmt]
+    try:
+        return tool_def.xls_create(*args, key="McpBasisSwap")
+    except Exception as e:
+        s = f"McpBasisSwap except: {e}"
+        logging.warning(args)
+        logging.warning(s, exc_info=True)
+        return s
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("basisSwap", "object")
+def BasisSwapNPV(basisSwap):
+    """BasisSwap 净现值 NPV（同币种）。"""
+    return basisSwap.NPV()
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("basisSwap", "object")
+def BasisSwapPrice(basisSwap):
+    return basisSwap.Price()
 
 
 @xl_func(macro=False, recalc_on_open=True)
@@ -457,9 +800,11 @@ def SwapFixedLegs(vanillaSwap, fields):
     AmortAmounts = json.loads(vanillaSwap.FixedLegAmortAmounts())
     ResidualAmounts = json.loads(vanillaSwap.FixedLegResidualAmounts())
     Notionals = json.loads(vanillaSwap.FixedLegNotionals())
+    InterestPayments = _load_vanilla_leg_interest_payments(vanillaSwap, True)
 
     # 有期初交换则期初（StartDate）也作为 payment，但无利息相关数据
     hasInitialPayment = vanillaSwap.FixedLegHasInitialExchange()
+    n_accr = len(AccrStartDates)
     if hasInitialPayment:
         AccrStartDates.insert(0, "N/A")
         AccrEndDates.insert(0, "N/A")
@@ -469,6 +814,7 @@ def SwapFixedLegs(vanillaSwap, fields):
 
     rows = []
     for i in range(len(PaymentDates)):
+        accr_idx = _cf_payment_accr_idx(i, n_accr, hasInitialPayment)
         po = {
             "PaymentDate": PaymentDates[i],
             "AccrStartDate": AccrStartDates[i],
@@ -476,6 +822,7 @@ def SwapFixedLegs(vanillaSwap, fields):
             "AccrDay": AccrDays[i],
             "AccrYearFrac": AccrYearFrac[i],
             "AccrRate": AccrRates[i],
+            "Notional": _cf_period_notional(Notionals, accr_idx, i),
             "Payment": Payments[i],
             "DiscountFactor": DiscountFactors[i],
             "PV": PVs[i],
@@ -483,17 +830,18 @@ def SwapFixedLegs(vanillaSwap, fields):
             "PaymentDateYearFrac": PaymentDateYearFracs[i],
             "AmortAmounts": AmortAmounts[i],
             "ResidualAmounts": ResidualAmounts[i],
-            "Notionals": Notionals[i],
         }
+        if 0 <= accr_idx < len(InterestPayments):
+            po["_cpp_int_payment"] = InterestPayments[accr_idx]
         if i < len(CFs):
             po["CF"] = CFs[i]
-        rows.append(po)
+        rows.append(_enrich_cf_payment_audit(po))
 
     result = []
     for i, row in enumerate(rows, start=1):
         obj = [f"Period{i}"]
         for field in fields:
-            obj.append(row[field])
+            obj.append(_cf_row_value(row, field))
         result.append(obj)
     return result
 
@@ -555,9 +903,11 @@ def SwapFloatingLegs(vanillaSwap, fields):
     AmortAmounts = json.loads(vanillaSwap.FloatingLegAmortAmounts())
     ResidualAmounts = json.loads(vanillaSwap.FloatingLegResidualAmounts())
     Notionals = json.loads(vanillaSwap.FloatingLegNotionals())
+    InterestPayments = _load_vanilla_leg_interest_payments(vanillaSwap, False)
 
     # 有期初交换则期初（StartDate）也作为 payment，但无利息相关数据
     hasInitialPayment = vanillaSwap.FloatingLegHasInitialExchange()
+    n_accr = len(AccrStartDates)
     if hasInitialPayment:
         AccrStartDates.insert(0, "N/A")
         AccrEndDates.insert(0, "N/A")
@@ -567,6 +917,7 @@ def SwapFloatingLegs(vanillaSwap, fields):
 
     rows = []
     for i in range(len(PaymentDates)):
+        accr_idx = _cf_payment_accr_idx(i, n_accr, hasInitialPayment)
         po = {
             "PaymentDate": PaymentDates[i],
             "AccrStartDate": AccrStartDates[i],
@@ -574,6 +925,7 @@ def SwapFloatingLegs(vanillaSwap, fields):
             "AccrDay": AccrDays[i],
             "AccrYearFrac": AccrYearFrac[i],
             "AccrRate": AccrRates[i],
+            "Notional": _cf_period_notional(Notionals, accr_idx, i),
             "Payment": Payments[i],
             "DiscountFactor": DiscountFactors[i],
             "PV": PVs[i],
@@ -581,17 +933,18 @@ def SwapFloatingLegs(vanillaSwap, fields):
             "PaymentDateYearFrac": PaymentDateYearFracs[i],
             "AmortAmounts": AmortAmounts[i],
             "ResidualAmounts": ResidualAmounts[i],
-            "Notionals": Notionals[i],
         }
+        if 0 <= accr_idx < len(InterestPayments):
+            po["_cpp_int_payment"] = InterestPayments[accr_idx]
         if i < len(CFs):
             po["CF"] = CFs[i]
-        rows.append(po)
+        rows.append(_enrich_cf_payment_audit(po))
 
     result = []
     for i, row in enumerate(rows, start=1):
         obj = [f"Period{i}"]
         for field in fields:
-            obj.append(row[field])
+            obj.append(_cf_row_value(row, field))
         result.append(obj)
     return result
 
@@ -959,12 +1312,6 @@ def XCcySwapMarketValue(xCurrencySwap, isResultTermCurrency=True):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("xCurrencySwap", "object")
-def XCcySwapMarketParRate(xCurrencySwap):
-    return xCurrencySwap.MarketParRate()
-
-
-@xl_func(macro=False, recalc_on_open=True)
-@xl_arg("xCurrencySwap", "object")
 def XCcySwapDuration(xCurrencySwap):
     return xCurrencySwap.Duration()
 
@@ -983,22 +1330,54 @@ def XCcySwapPV01(xCurrencySwap):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("xCurrencySwap", "object")
-def XCcySwapDV01(xCurrencySwap):
-    return xCurrencySwap.DV01()
+@xl_arg("isResultTermCurrency", "bool")
+def XCcySwapDV01(xCurrencySwap, isResultTermCurrency=True):
+    return xCurrencySwap.DV01(isResultTermCurrency)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("xCurrencySwap", "object")
+@xl_arg("isBaseLeg", "bool")
+@xl_arg("zeroOtherLeg", "bool")
+def XCcySwapParSpread(xCurrencySwap, isBaseLeg=True, zeroOtherLeg=False):
+    return xCurrencySwap.ParSpread(isBaseLeg, zeroOtherLeg)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("xCurrencySwap", "object")
+@xl_arg("isBaseLeg", "bool")
+@xl_arg("zeroOtherLeg", "bool")
+def XCcySwapParCoupon(xCurrencySwap, isBaseLeg=True, zeroOtherLeg=False):
+    return xCurrencySwap.ParCoupon(isBaseLeg, zeroOtherLeg)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("xCurrencySwap", "object")
+@xl_arg("spreadOnTermLeg", "bool")
+@xl_arg("isResultTermCurrency", "bool")
+def XCcySwapPVBP(xCurrencySwap, spreadOnTermLeg=True, isResultTermCurrency=True):
+    return xCurrencySwap.PVBP(spreadOnTermLeg, isResultTermCurrency)
 
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("xCurrencySwap", "object")
 @xl_arg("isResultTermCurrency", "bool")
-def XCcySwapCF(xCurrencySwap, isResultTermCurrency=True):
-    return xCurrencySwap.CF(isResultTermCurrency)
+def XCcySwapDV01Bp(xCurrencySwap, isResultTermCurrency=True):
+    return xCurrencySwap.DV01Bp(isResultTermCurrency)
 
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("xCurrencySwap", "object")
+def XCcySwapAnnuity(xCurrencySwap):
+    return xCurrencySwap.Annuity()
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("xCurrencySwap", "object")
+@xl_arg("spreadOnTermLeg", "bool")
 @xl_arg("isResultTermCurrency", "bool")
-def XCcySwapValuationDayCF(xCurrencySwap, isResultTermCurrency=True):
-    return xCurrencySwap.ValuationDayCF(isResultTermCurrency)
+def XCcySwapAnnuityBp(xCurrencySwap, spreadOnTermLeg=True, isResultTermCurrency=True):
+    return xCurrencySwap.AnnuityBp(spreadOnTermLeg, isResultTermCurrency)
 
 
 @xl_func(macro=False, recalc_on_open=True)
@@ -1042,27 +1421,22 @@ def XCcySwapBaseLegAccrued(xCurrencySwap, isResultTermCurrency=True):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("xCurrencySwap", "object")
+def XCcySwapBaseLegPV01(xCurrencySwap):
+    return xCurrencySwap.BaseLegPV01()
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("xCurrencySwap", "object")
+@xl_arg("isResultTermCurrency", "bool")
+def XCcySwapBaseLegPremium(xCurrencySwap, isResultTermCurrency=True):
+    return xCurrencySwap.BaseLegPremium(isResultTermCurrency)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("xCurrencySwap", "object")
 @xl_arg("isResultTermCurrency", "bool")
 def XCcySwapTermLegCumCF(xCurrencySwap, isResultTermCurrency=True):
     return xCurrencySwap.TermLegCumCF(isResultTermCurrency)
-
-
-@xl_func(macro=False, recalc_on_open=True)
-@xl_arg("xCurrencySwap", "object")
-@xl_arg("npv", "float")
-def XCcySwapCalculateSwapRateFromNPV(xCurrencySwap, npv):
-    val = xCurrencySwap.CalculateSwapRateFromNPV(npv)
-    print("call XCcySwapCalculateSwapRateFromNPV:", npv, val, xCurrencySwap)
-    return val
-
-
-@xl_func(macro=False, recalc_on_open=True)
-@xl_arg("xCurrencySwap", "object")
-@xl_arg("npv", "float")
-def XCcySwapCalculateTermMarginFromNPV(xCurrencySwap, npv):
-    val = xCurrencySwap.CalculateTermMarginFromNPV(npv)
-    print("call XCcySwapCalculateTermMarginFromNPV:", npv, val, xCurrencySwap)
-    return val
 
 
 @xl_func(macro=False, recalc_on_open=True)
@@ -1121,6 +1495,19 @@ def XCcySwapTermLegAccrued(xCurrencySwap, isResultTermCurrency=True):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("xCurrencySwap", "object")
+def XCcySwapTermLegPV01(xCurrencySwap):
+    return xCurrencySwap.TermLegPV01()
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("xCurrencySwap", "object")
+@xl_arg("isResultTermCurrency", "bool")
+def XCcySwapTermLegPremium(xCurrencySwap, isResultTermCurrency=True):
+    return xCurrencySwap.TermLegPremium(isResultTermCurrency)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("xCurrencySwap", "object")
 @xl_arg("isResultTermCurrency", "bool")
 def XCcySwapTermLegAnnuity(xCurrencySwap, isResultTermCurrency=True):
     return xCurrencySwap.TermLegAnnuity(isResultTermCurrency)
@@ -1143,6 +1530,30 @@ def XCcySwapTermLegMDuration(xCurrencySwap):
 @xl_arg("isResultTermCurrency", "bool")
 def XCcySwapTermLegCumPV(xCurrencySwap, isResultTermCurrency=True):
     return xCurrencySwap.TermLegCumPV(isResultTermCurrency)
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("xCurrencySwap", "object")
+def XCcySwapBaseLegIsFloatingLeg(xCurrencySwap):
+    return xCurrencySwap.BaseLegIsFloatingLeg()
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("xCurrencySwap", "object")
+def XCcySwapBaseLegIsFullLeg(xCurrencySwap):
+    return xCurrencySwap.BaseLegIsFullLeg()
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("xCurrencySwap", "object")
+def XCcySwapTermLegIsFloatingLeg(xCurrencySwap):
+    return xCurrencySwap.TermLegIsFloatingLeg()
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("xCurrencySwap", "object")
+def XCcySwapTermLegIsFullLeg(xCurrencySwap):
+    return xCurrencySwap.TermLegIsFullLeg()
 
 
 @xl_func(macro=False, recalc_on_open=True, auto_resize=True)
@@ -1181,30 +1592,51 @@ def XCcySwapFixedLegs(xCurrencySwap, isBaseLeg, fields, isResultTermCurrency=Tru
         PaymentDateYearFracs = json.loads(xCurrencySwap.TermLegPaymentDateYearFracs())
         CFs = json.loads(xCurrencySwap.TermLegCFs(isResultTermCurrency))
 
+    Notionals = _load_xccy_leg_notionals(xCurrencySwap, isBaseLeg)
+    InterestPayments = _load_xccy_leg_interest_payments(
+        xCurrencySwap, isBaseLeg, isResultTermCurrency
+    )
+
+    n_pay = len(PaymentDates)
+    has_initial = n_pay > len(AccrStartDates)
+    n_accr = len(AccrStartDates)
+
     rows = []
-    for i in range(len(PaymentDates)):
+    for i in range(n_pay):
+        accr_idx = _cf_payment_accr_idx(i, n_accr, has_initial)
+        if accr_idx < 0 or accr_idx >= n_accr:
+            accr_start = accr_end = accr_day = accr_frac = accr_rate = pay_frac = "N/A"
+        else:
+            accr_start = AccrStartDates[accr_idx]
+            accr_end = AccrEndDates[accr_idx]
+            accr_day = AccrDays[accr_idx]
+            accr_frac = AccrYearFrac[accr_idx]
+            accr_rate = AccrRates[accr_idx]
+            pay_frac = PaymentDateYearFracs[accr_idx] if accr_idx < len(PaymentDateYearFracs) else "N/A"
         po = {
             "PaymentDate": PaymentDates[i],
-            "AccrStartDate": AccrStartDates[i],
-            "AccrEndDate": AccrEndDates[i],
-            "AccrDay": AccrDays[i],
-            "AccrYearFrac": AccrYearFrac[i],
-            "AccrRate": AccrRates[i],
-            "Payment": Payments[i],
-            "DiscountFactor": DiscountFactors[i],
-            "PV": PVs[i],
-            "CumPV": CumPVs[i],
-            "PaymentDateYearFrac": PaymentDateYearFracs[i],
+            "AccrStartDate": accr_start,
+            "AccrEndDate": accr_end,
+            "AccrDay": accr_day,
+            "AccrYearFrac": accr_frac,
+            "AccrRate": accr_rate,
+            "Notional": _cf_period_notional(Notionals, accr_idx, i),
+            "Payment": Payments[i] if i < len(Payments) else "N/A",
+            "DiscountFactor": DiscountFactors[i] if i < len(DiscountFactors) else "N/A",
+            "PV": PVs[i] if i < len(PVs) else "N/A",
+            "CumPV": CumPVs[i] if i < len(CumPVs) else "N/A",
+            "PaymentDateYearFrac": pay_frac,
         }
-        if i < len(CFs):
-            po["CF"] = CFs[i]
-        rows.append(po)
+        if 0 <= accr_idx < len(InterestPayments):
+            po["_cpp_int_payment"] = InterestPayments[accr_idx]
+        po["CF"] = CFs[i] if i < len(CFs) else 0.0
+        rows.append(_enrich_cf_payment_audit(po))
 
     result = []
     for i, row in enumerate(rows, start=1):
         obj = [f"Period{i}"]
         for field in fields:
-            obj.append(row[field])
+            obj.append(_cf_row_value(row, field))
         result.append(obj)
     return result
 
@@ -1289,30 +1721,51 @@ def XCcySwapFloatingLegs(xCurrencySwap, isBaseLeg, fields, isResultTermCurrency=
         PaymentDateYearFracs = json.loads(xCurrencySwap.TermLegPaymentDateYearFracs())
         CFs = json.loads(xCurrencySwap.TermLegCFs(isResultTermCurrency))
 
+    Notionals = _load_xccy_leg_notionals(xCurrencySwap, isBaseLeg)
+    InterestPayments = _load_xccy_leg_interest_payments(
+        xCurrencySwap, isBaseLeg, isResultTermCurrency
+    )
+
+    n_pay = len(PaymentDates)
+    has_initial = n_pay > len(AccrStartDates)
+    n_accr = len(AccrStartDates)
+
     rows = []
-    for i in range(len(PaymentDates)):
+    for i in range(n_pay):
+        accr_idx = _cf_payment_accr_idx(i, n_accr, has_initial)
+        if accr_idx < 0 or accr_idx >= n_accr:
+            accr_start = accr_end = accr_day = accr_frac = accr_rate = pay_frac = "N/A"
+        else:
+            accr_start = AccrStartDates[accr_idx]
+            accr_end = AccrEndDates[accr_idx]
+            accr_day = AccrDays[accr_idx]
+            accr_frac = AccrYearFrac[accr_idx]
+            accr_rate = AccrRates[accr_idx]
+            pay_frac = PaymentDateYearFracs[accr_idx] if accr_idx < len(PaymentDateYearFracs) else "N/A"
         po = {
             "PaymentDate": PaymentDates[i],
-            "AccrStartDate": AccrStartDates[i],
-            "AccrEndDate": AccrEndDates[i],
-            "AccrDay": AccrDays[i],
-            "AccrYearFrac": AccrYearFrac[i],
-            "AccrRate": AccrRates[i],
-            "Payment": Payments[i],
-            "DiscountFactor": DiscountFactors[i],
-            "PV": PVs[i],
-            "CumPV": CumPVs[i],
-            "PaymentDateYearFrac": PaymentDateYearFracs[i],
+            "AccrStartDate": accr_start,
+            "AccrEndDate": accr_end,
+            "AccrDay": accr_day,
+            "AccrYearFrac": accr_frac,
+            "AccrRate": accr_rate,
+            "Notional": _cf_period_notional(Notionals, accr_idx, i),
+            "Payment": Payments[i] if i < len(Payments) else "N/A",
+            "DiscountFactor": DiscountFactors[i] if i < len(DiscountFactors) else "N/A",
+            "PV": PVs[i] if i < len(PVs) else "N/A",
+            "CumPV": CumPVs[i] if i < len(CumPVs) else "N/A",
+            "PaymentDateYearFrac": pay_frac,
         }
-        if i < len(CFs):
-            po["CF"] = CFs[i]
-        rows.append(po)
+        if 0 <= accr_idx < len(InterestPayments):
+            po["_cpp_int_payment"] = InterestPayments[accr_idx]
+        po["CF"] = CFs[i] if i < len(CFs) else 0.0
+        rows.append(_enrich_cf_payment_audit(po))
 
     result = []
     for i, row in enumerate(rows, start=1):
         obj = [f"Period{i}"]
         for field in fields:
-            obj.append(row[field])
+            obj.append(_cf_row_value(row, field))
         result.append(obj)
     return result
 
@@ -1435,22 +1888,36 @@ def XCcySwapFloatingQuotes(xCurrencySwap, isBaseLeg, fields, isResultTermCurrenc
         PaymentDateYearFracs = json.loads(xCurrencySwap.TermLegPaymentDateYearFracs())
         CFs = json.loads(xCurrencySwap.TermLegCFs(isResultTermCurrency))
 
+    n_pay = len(PaymentDates)
+    has_initial = n_pay > len(AccrStartDates)
+    n_accr = len(AccrStartDates)
+
     payment_dict: Dict[Any, Dict[str, Any]] = {}
     payment_list: List[Dict[str, Any]] = []
-    for i in range(len(PaymentDates)):
+    for i in range(n_pay):
+        accr_idx = (i - 1) if (has_initial and i > 0) else i
+        if accr_idx < 0 or accr_idx >= n_accr:
+            accr_start = accr_end = accr_day = accr_frac = accr_rate = pay_frac = "N/A"
+        else:
+            accr_start = AccrStartDates[accr_idx]
+            accr_end = AccrEndDates[accr_idx]
+            accr_day = AccrDays[accr_idx]
+            accr_frac = AccrYearFrac[accr_idx]
+            accr_rate = AccrRates[accr_idx]
+            pay_frac = PaymentDateYearFracs[accr_idx] if accr_idx < len(PaymentDateYearFracs) else "N/A"
         po = {
             "PaymentDate": PaymentDates[i],
-            "AccrStartDate": AccrStartDates[i],
-            "AccrEndDate": AccrEndDates[i],
-            "AccrDay": AccrDays[i],
-            "AccrYearFrac": AccrYearFrac[i],
-            "AccrRate": AccrRates[i],
-            "Payment": Payments[i],
-            "DiscountFactor": DiscountFactors[i],
-            "PV": PVs[i],
-            "CumPV": CumPVs[i],
-            "PaymentDateYearFrac": PaymentDateYearFracs[i],
-            "CF": CFs[i],
+            "AccrStartDate": accr_start,
+            "AccrEndDate": accr_end,
+            "AccrDay": accr_day,
+            "AccrYearFrac": accr_frac,
+            "AccrRate": accr_rate,
+            "Payment": Payments[i] if i < len(Payments) else "N/A",
+            "DiscountFactor": DiscountFactors[i] if i < len(DiscountFactors) else "N/A",
+            "PV": PVs[i] if i < len(PVs) else "N/A",
+            "CumPV": CumPVs[i] if i < len(CumPVs) else "N/A",
+            "PaymentDateYearFrac": pay_frac,
+            "CF": CFs[i] if i < len(CFs) else 0.0,
         }
         payment_dict[po["AccrEndDate"]] = po
         payment_list.append(po)

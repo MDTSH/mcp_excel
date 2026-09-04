@@ -5,6 +5,8 @@
 
 Same pillar data: JSON (RawMD) vs Excel VP construction (Direct).
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC33-RawMDvsDirect.xlsx](./MCP-TC33-RawMDvsDirect.xlsx)
 
 ## **Comparison (P0)**

@@ -1,0 +1,94 @@
+# ============================================================================
+# 小雪球结构场外衍生品（AutoCall Note）产品结构定义
+# ============================================================================
+#
+# 产品概述:
+# 小雪球是一种不带敲入的自动赎回结构，属于保本产品。
+# - 观察条件：锁定期后按月观察敲出
+# - 敲出条件：价格 ≥ 敲出价格（锁定期后）
+# - 支付方式：敲出时支付敲出票息，未敲出时支付红利票息
+#
+# 典型参数示例:
+#    - 期初价格: 100
+#    - 敲出价格: 103% (UpperBarPercentage)
+#    - 敲出票息: 18% (HighYield)
+#    - 红利票息: 15% (MidYield)
+#    - 锁定期: 1个月 (LockPeriod)
+#
+# ============================================================================
+
+packages:
+  - name: AutoCall
+    structure:
+      buy_sell_field: ""
+      
+      dates:
+        - ReferenceDate
+        - StartDate
+        - ExpiryDate
+        - EndDate
+      
+      strikes:
+        - ObservationPrice
+      
+      barriers: []
+      
+      ko_barriers: []
+      
+      yields:
+        - HighYield
+        - MidYield
+      
+      percentages:
+        - UpperBarPercentage
+      
+      arguments:
+        - LockPeriod
+      
+      amounts:
+        - Notional
+      
+      calendars:
+        - Calendar
+      
+      basis: Act360
+    
+    schedules:
+      - name: KnockOutObservationSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Monthly
+        calendar: "@Calendar"
+        date_adjuster: Following
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+    
+    payoff:
+      ReferenceDate: |
+        S0 = ObservationPrice
+        UpperBarrier = S0 * UpperBarPercentage
+        IsKnockedOut = 0
+        CouponPayment = 0
+        LockPeriod = 1
+        
+      KnockOutObservationSchedule: |
+        if (IsKnockedOut = 0) then
+          MonthsFromStart = t() * 12
+          
+          if (MonthsFromStart >= LockPeriod and Spot() >= UpperBarrier) then
+            IsKnockedOut = 1
+            CouponPayment = Notional * (HighYield / 100.0) * t()
+          endIf
+        endIf
+      
+      ExpiryDate: |
+        if (IsKnockedOut = 1) then
+          FinalYield = CouponPayment / Notional
+        else
+          MaturityYears = t()
+          FinalYield = (MidYield / 100.0) * MaturityYears
+        endIf
+      
+      EndDate: |
+        opt pays Notional * FinalYield

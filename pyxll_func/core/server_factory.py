@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Union
+from datetime import datetime, date
 
 from pyxll import xl_func, xl_arg
 
@@ -50,16 +51,16 @@ def McpFixedRateBondData_Svr(mcpFixedRateBond, flag=False):
     obj = mcp_server.object_data_cache[mcpFixedRateBond]
     return decode(obj, flag)
 
-@xl_func(macro=False, recalc_on_open=True)
-@xl_arg("identifiers", "str")
-def McpBondCurve_Svr(identifiers):
-    """
-    Get server-side bond curve
-    Parameters: identifiers - Bond code
-    Returns: Bond curve object
-    """
-    frb = mcp_server.McpBondCurves(identifiers)
-    return frb
+# @xl_func(macro=False, recalc_on_open=True)
+# @xl_arg("identifiers", "str")
+# def McpBondCurve_Svr(identifiers):
+#     """
+#     Get server-side bond curve
+#     Parameters: identifiers - Bond code
+#     Returns: Bond curve object
+#     """
+#     frb = mcp_server.McpBondCurves(identifiers)
+#     return frb
 
 @xl_func(macro=False, recalc_on_open=True, auto_resize=True)
 @xl_arg("mcpBondCurve", "object")
@@ -98,6 +99,17 @@ def McpParametricCurvesData_Svr(mcpParametricCurve, flag=False):
     obj = mcp_server.object_data_cache[mcpParametricCurve]
     return decode(obj, flag)
 
+@xl_func(macro=False, recalc_on_open=True, auto_resize=True)
+@xl_arg("param", "object")
+@xl_arg("flag", "bool")
+def decode3(param, flag=False):
+    """
+    Get parametric curve data
+    Parameters: mcpParametricCurve - Curve object, flag - Format flag
+    Returns: Curve data
+    """
+    obj = mcp_server.object_data_cache[param]
+    return decode(obj, flag)
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
@@ -175,13 +187,14 @@ def McpVanillaSwapsData_Svr(mcpVanillaSwap, flag=False):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
-def McpVolSurface_Svr(identifiers):
+@xl_arg("hist_date", "str")
+def McpVolConfSurface_Svr(identifiers,hist_date):
     """
     Create volatility surface object from server
     Parameters: identifiers - Surface identifier
     Returns: Surface object
     """
-    result = mcp_server.McpVolSurfaces(identifiers)
+    result = mcp_server.McpVolSurfaces(identifiers,hist_date)
     return result
 
 
@@ -236,74 +249,104 @@ def McpBondMarketArgs_Svr(identifiers):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
-def McpSwapCurve_Svr(identifiers):
+@xl_arg("hist_date", "str")
+def McpYieldCurve_Svr(identifiers,hist_date):
     """
     Create swap curve object from server
     Parameters: identifiers - Curve identifier
     Returns: Curve object
     """
-    frb = mcp_server.McpSwapCurves(identifiers)
+    frb = mcp_server.McpYieldCurve(identifiers,hist_date)
+    return frb
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("identifiers", "str")
+@xl_arg("hist_date", "str")
+def McpSwapCurve_Svr(identifiers,hist_date):
+    """
+    Create swap curve object from server
+    Parameters: identifiers - Curve identifier
+    Returns: Curve object
+    """
+    frb = mcp_server.McpSwapCurve(identifiers,hist_date)
+    return frb
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("identifiers", "str")
+@xl_arg("hist_date", "str")
+def McpYieldCurve2_Svr(identifiers,hist_date):
+    """
+    Create swap curve object from server
+    Parameters: identifiers - Curve identifier
+    Returns: Curve object
+    """
+    frb = mcp_server.McpYieldCurve2(identifiers,hist_date)
     return frb
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
 @xl_arg("flag", "bool")
-def McpVolSurface2_Svr(identifiers, flag=False):
+@xl_arg("hist_date", "str")
+def McpVolSurface2_Svr(identifiers, flag=False,hist_date=None):
     """
     Get volatility surface by name from server (version 2)
     Parameters: identifiers - Identifier, flag - Format flag
     Returns: Volatility surface
     """
-    vsf = mcp_server.McpVolSurface2ByName(identifiers, flag)
+    vsf = mcp_server.McpVolSurface2(identifiers, flag,hist_date)
     return vsf
 
 # Note: Why distinguish Equity?
-@xl_func(macro=False, recalc_on_open=True)
-@xl_arg("identifiers", "str")
-def McpVolSurface2Equity_Svr(identifiers):
-    """
-    Get equity volatility surface from server (version 2)
-    Parameters: identifiers - Identifier
-    Returns: Equity volatility surface
-    """
-    vsf = mcp_server.McpVolSurface2Equity(identifiers)
-    return vsf
+# @xl_func(macro=False, recalc_on_open=True)
+# @xl_arg("identifiers", "str")
+# @xl_arg("hist_date", "str")
+# def McpVolSurface2Equity_Svr(identifiers,hist_date):
+#     """
+#     Get equity volatility surface from server (version 2)
+#     Parameters: identifiers - Identifier
+#     Returns: Equity volatility surface
+#     """
+#     vsf = mcp_server.McpVolSurface2Equity(identifiers,hist_date)
+#     return vsf
 
 # Note: What does Flag mean?
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
 @xl_arg("flag", "bool")
-def McpVolSurface_Svr(identifiers, flag=False):
+@xl_arg("hist_date", "str")
+def McpVolSurface_Svr(identifiers, flag=False,hist_date=None):
     """
     Get volatility surface by name from server
     Parameters: identifiers - Identifier, flag - Format flag
     Returns: Volatility surface
     """
-    vsf = mcp_server.McpVolSurfaceByName(identifiers, flag)
+    vsf = mcp_server.McpVolSurface(identifiers, flag,hist_date)
     return vsf
 
 # Note: Is there unilateral FX volatility surface now?
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
-def McpFXVolSurface_Svr(identifiers):
+@xl_arg("hist_date", "str")
+def McpFXVolSurface_Svr(identifiers,hist_date):
     """
     Get FX volatility surface by name from server
     Parameters: identifiers - Identifier
     Returns: FX volatility surface
     """
-    vsf = mcp_server.McpFXVolSurfaceByName(identifiers)
+    vsf = mcp_server.McpFXVolSurface(identifiers,hist_date)
     return vsf
 
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
-def McpFXVolSurface2_Svr(identifiers):
+@xl_arg("hist_date", "str")
+def McpFXVolSurface2_Svr(identifiers,hist_date):
     """
     Get FX volatility surface by name from server (version 2)
     Parameters: identifiers - Identifier
     Returns: FX volatility surface
     """
-    vsf = mcp_server.McpFXVolSurface2ByName(identifiers)
+    vsf = mcp_server.McpFXVolSurface2(identifiers,hist_date)
     return vsf
 
 # Note: Can all XXXData be merged into one method?
@@ -677,8 +720,9 @@ def McpGet_Svr(assetid, field):
 # New interface
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
-def McpCapVolSurface_Svr(identifiers):
-    result = mcp_server.McpCapVolSurface(identifiers)
+@xl_arg("hist_date", "str")
+def McpCapVolSurface_Svr(identifiers,hist_date):
+    result = mcp_server.McpCapVolSurface(identifiers,hist_date)
     return result
 
 @xl_func(macro=False, recalc_on_open=True, auto_resize=True)
@@ -690,8 +734,9 @@ def McpCapVolSurfaceData_Svr(mcpVolSurfaces, flag=False):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("identifiers", "str")
-def McpSwaptionCube_Svr(identifiers):
-    result = mcp_server.McpSwaptionCubes(identifiers)
+@xl_arg("hist_date", "str")
+def McpSwaptionCube_Svr(identifiers,hist_date):
+    result = mcp_server.McpSwaptionCube(identifiers,hist_date)
     return result
 
 @xl_func(macro=False, recalc_on_open=True, auto_resize=True)
@@ -705,7 +750,7 @@ def McpSwaptionCubesData_Svr(mcpSwaptionCube, flag=False):
 @xl_arg("identifiers", "str")
 @xl_arg("refdate", "str")
 def McpFXForwardPointsCurve_Svr(identifiers,refdate=""):
-    result = mcp_server.McpFXForwardPointsCurves(identifiers,refdate)
+    result = mcp_server.McpFXForwardPointsCurve(identifiers,refdate)
     return result
 
 @xl_func(macro=False, recalc_on_open=True, auto_resize=True)
@@ -719,7 +764,7 @@ def McpFXForwardPointsCurvesData_Svr(mcpFXForwardPointsCurves, flag=False):
 @xl_arg("identifiers", "str")
 @xl_arg("refdate", "str")
 def McpFXForwardPointsCurves2_Svr(identifiers,refdate=""):
-    result = mcp_server.McpFXForwardPointsCurves2(identifiers,refdate)
+    result = mcp_server.McpFXForwardPointsCurve2(identifiers,refdate)
     return result
 
 @xl_func(macro=False, recalc_on_open=True, auto_resize=True)
@@ -735,3 +780,52 @@ def McpFXForwardPointsCurves2Data_Svr(mcpFXForwardPointsCurves2, flag=False):
 def McpFixedRateBondsData_Svr(mcpFixedRateBond, flag=False):
     obj = mcp_server.object_data_cache[mcpFixedRateBond]
     return decode(obj, flag)
+
+@xl_func(macro=False, recalc_on_open=True, auto_resize=True)
+@xl_arg("identifiers", "str")
+@xl_arg("hist_date", "str")
+def McpBondSpreadCurve_Svr(identifiers, hist_date):
+    obj = mcp_server.McpBondSpreadCurve(identifiers, hist_date)
+    return obj
+
+@xl_func(macro=False, recalc_on_open=True, auto_resize=True)
+@xl_arg("identifiers", "str")
+@xl_arg("hist_date", "str")
+def McpBondCurve_Svr(identifiers, hist_date):
+    obj = mcp_server.McpBondCurve(identifiers, hist_date)
+    return obj
+
+
+@xl_func(macro=False, recalc_on_open=True, auto_resize=True)
+@xl_arg("identifiers", "str")
+@xl_arg("hist_date", "str")
+def McpCreditCurve_Svr(identifiers, hist_date):
+    """
+    Create credit curve object from server
+    Parameters: identifiers - Curve identifier, hist_date - Historical date
+    Returns: Credit curve object
+    """
+    # 统一处理 hist_date 参数，转换为 yyyyMMdd 格式
+    obj = mcp_server.McpCreditCurve(identifiers, hist_date)
+    return obj
+
+@xl_func(macro=False, recalc_on_open=True, auto_resize=True)
+@xl_arg("identifiers", "str")
+@xl_arg("hist_date", "str")
+def McpForwardCurve_Svr(identifiers, hist_date):
+    obj = mcp_server.McpForwardCurve(identifiers, hist_date)
+    return obj
+
+@xl_func(macro=False, recalc_on_open=True, auto_resize=True)
+@xl_arg("identifiers", "str")
+@xl_arg("hist_date", "str")
+def McpForwardCurve2_Svr(identifiers, hist_date):
+    obj = mcp_server.McpForwardCurve2(identifiers, hist_date)
+    return obj
+
+@xl_func(macro=False, recalc_on_open=True, auto_resize=True)
+@xl_arg("identifiers", "str")
+@xl_arg("hist_date", "str")
+def McpLocalVol_Svr(identifiers, hist_date):
+    obj = mcp_server.McpLocalVol(identifiers, hist_date)
+    return obj

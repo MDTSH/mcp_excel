@@ -1,0 +1,66 @@
+# ============================================================================
+# 二元看涨期权（Digital Call）产品结构定义
+# ============================================================================
+#
+# 产品概述:
+# 二元看涨期权是一种到期时根据价格是否达到障碍价支付固定收益的期权。
+# - 观察条件：到期日观察
+# - 支付条件：价格 ≥ 障碍价
+# - 支付方式：达到障碍价时支付固定票息，否则支付0
+#
+# 典型参数示例:
+#    - 期初价格: 100
+#    - 障碍价: 105% (UpperBarPercentage)
+#    - 固定票息: 10% (HighYield)
+#
+# ============================================================================
+
+packages:
+  - name: DigitaCall
+    structure:
+      buy_sell_field: ""
+      
+      dates:
+        - StartDate
+        - ExpiryDate
+        - EndDate
+        - PremiumDate
+      
+      strikes:
+        - ObservationPrice
+      
+      barriers: []
+      
+      yields:
+        - HighYield
+      
+      percentages:
+        - UpperBarPercentage
+      
+      arguments: []
+      
+      amounts:
+        - Notional
+      
+      calendars:
+        - Calendar
+      
+      basis: Act360
+    
+    schedules: []
+    
+    payoff:
+      ReferenceDate: |
+        S0 = ObservationPrice
+        UpperBarrier = S0 * UpperBarPercentage
+        FinalRate = HighYield
+        
+      ExpiryDate: |
+        if (Spot() >= UpperBarrier and FinalRate != 0) then
+          FinalRate = HighYield
+        else
+          FinalRate = 0
+        endIf
+        
+      EndDate: |
+        opt pays t() * Notional * FinalRate

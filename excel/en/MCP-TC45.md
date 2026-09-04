@@ -8,6 +8,8 @@ Load a **non-FX** forward curve (`ExpiryDates` + `UnderlyingRates`) from standar
 
 **What it does:** LiveStore / RawMD get `EQ_FORWARD`; the first pillar (2026-09-28) is about 100.5. This is not `FXForwardPointsCurve2` (P0/P1).
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC45-ForwardCurve.xlsx](./MCP-TC45-ForwardCurve.xlsx)
 
 ## **Object chain**

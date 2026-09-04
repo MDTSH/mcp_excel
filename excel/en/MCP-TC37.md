@@ -11,6 +11,8 @@ Standalone cross-currency basis sample (not the `MCP_MARKET_DATA` index): KV Dir
 
 Data: `data/XCCY_BASIS_CURVE_SAMPLE.json` (workbook-relative via `McpResolvePath`). Key sheets: `KV_Direct` (flat input curves + Path A2/B + DF/spread checks), `FromJson` (same curve_ids from JSON). After F9, read with `XccyBasisCurveDiscountFactor` / `XccyBasisCurveSpread`; hard checks use DF / SpotSpr_bp.
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC37-XccyBasis.xlsx](./MCP-TC37-XccyBasis.xlsx)
 
 ## **Object chain**

@@ -1,0 +1,80 @@
+# ============================================================================
+# 固定利率债券（Fixed Rate Bond）产品结构定义
+# ============================================================================
+#
+# 产品概述:
+# 固定利率债券是一种定期支付固定票息的债券产品。
+# - 观察条件：按付息频率定期付息
+# - 支付方式：定期支付票息，到期支付本金
+#
+# 典型参数示例:
+#    - 票息率: 5% (Coupon)
+#    - 付息频率: Quarterly (Frequency)
+#    - 日计数方法: Act365Fixed (DayCounter)
+#    - 名义本金: 1,000,000 (Notional)
+#
+# ============================================================================
+
+packages:
+  - name: FixedRateBond
+    structure:
+      buy_sell_field: BuySell
+      
+      dates:
+        - StartDate
+        - ExpiryDate
+        - EndDate
+        - PremiumDate
+      
+      strikes: []
+      
+      barriers: []
+      
+      yields:
+        - Coupon
+      
+      percentages: []
+      
+      arguments:
+        - Frequency
+        - DayCounter
+      
+      amounts:
+        - Notional
+        - FaceValue
+      
+      calendars:
+        - Calendar
+      
+      basis: Act365Fixed
+    
+    schedules:
+      - name: CouponSchedule
+        start: "@StartDate"
+        end: "@ExpiryDate"
+        frequency: Quarterly
+        calendar: "@Calendar"
+        date_adjuster: Following
+        end_to_end: true
+        long_stub: false
+        end_stub: false
+    
+    payoff:
+      ReferenceDate: |
+        TotalCoupon = 0
+        CouponPayment = 0
+        AccruedInterest = 0
+        DaysAccrued = 0
+        FaceValue = Notional
+        DayCounter = Act365Fixed
+        
+        opt pays -1 * InitialPrice * Notional / 100.0
+
+      CouponSchedule: |
+        CouponPayment = Notional * Coupon * 0.25
+        opt pays CouponPayment
+        
+      ExpiryDate: |
+
+      EndDate: |
+        opt pays Notional

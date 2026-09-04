@@ -11,6 +11,8 @@ Load the FR007 swap curve from standard JSON by valuation date: `McpRawMarketMan
 
 Data: `data/market_data/MCP_MARKET_DATA_20260626.json`, valuation date 2026-06-26. Key sheets: `Config` (paths / date / Manager / curve_id), `RawMD` (object + tenor zeros and DFs). After F9 the curve cell should be `McpSwapCurve@n` with values on each tenor.
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC39-FR007SwapCurveRawMD.xlsx](./MCP-TC39-FR007SwapCurveRawMD.xlsx)
 
 ## **Object chain**

@@ -17,6 +17,7 @@ python-dateutil>=2.8.0
 
 # Optional packages (uncomment if needed)
 # scipy>=1.7.0       # ImpliedVol / Delta solver in xScript (not required to open Excel)
+# markdown>=3.3.0    # LocalVol / MC HTML report in xScript (not required to open Excel)
 # matplotlib>=3.3.0  # For plotting
 # seaborn>=0.11.0    # For advanced plotting
 # jupyter>=1.0.0     # For Jupyter notebooks

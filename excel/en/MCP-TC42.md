@@ -8,6 +8,8 @@ No JSON `HistVol` node: build `McpHistVols` from the HIST CSV listed in `price_d
 
 **What it does:** LiveStore and RawMD sheets use the same CSV (USDCNH / EURUSD, window 60, EWMA) so the two σ values can be compared.
 
+> **Ready to run**: Download the [TC31–TC46 example pack](/download/MCP-TC31-46-LiveStoreRawMD.zip) (all workbooks plus shared `data/`). Unzip and open the xlsx under `en`. A single workbook will not run unless you place the pack's `data` folder next to it.
+
 [Download MCP-TC42-HistVolFromCSV.xlsx](./MCP-TC42-HistVolFromCSV.xlsx)
 
 ## **Object chain**
