@@ -84,7 +84,8 @@ packages:
         - ParticipateRate1   # 参与率1（未触碰时使用）
         - ParticipateRate2   # 参与率2（触碰后下跌时使用）
         - ParticipateRate3   # 参与率3（触碰后上涨时使用）
-        - KnockInBarPercentage   # 低触碰障碍价%
+        - KnockInBarPercentage   # 低触碰障碍价%（引擎 GetKOPrice 亦认 lowerbarpercentage）
+        - LowerBarPercentage     # 与 KnockInBarPercentage 同义别名（BarrierDistance 指标）
         - UpperStrkPercentage   # 行权价格2%
         - LowerStrkPercentage   # 行权价格1%
 

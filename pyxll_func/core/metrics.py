@@ -640,11 +640,11 @@ def adapter_metric(adapter, metric_name):
     若未找到返回 "#Adapter: 无 {metric_name} 结果"
     """
     if adapter is None:
-        return "#Adapter: adapter 为空"
+        return "#Adapter: adapter is empty"
     if isinstance(adapter, str):
-        return "#Adapter: adapter 创建失败"
+        return "#Adapter: failed to create adapter"
     if not metric_name or not str(metric_name).strip():
-        return "#Adapter: metric_name 不能为空"
+        return "#Adapter: metric_name cannot be empty"
     mname = str(metric_name).strip()
     try:
         # CLN 归因阶梯：委托 ClnAdapterAttributionLadder
@@ -664,7 +664,7 @@ def adapter_metric(adapter, metric_name):
         if m is not None:
             return _metric_value_for_excel(m)
         adapter_type = type(adapter).__name__
-        return f"#{adapter_type}: 无 {mname} 结果"
+        return f"#{adapter_type}: no {mname} result"
     except Exception as e:
         return f"#Adapter: {e}"
 
@@ -680,14 +680,14 @@ def adapter_metrics(adapter, metrics=None, layout="V"):
     layout: V 竖向(默认) [[name,val],...], H 横向 [[names...],[values...]]
     """
     if adapter is None:
-        return [["#Adapter: adapter 为空"]]
+        return [["#Adapter: adapter is empty"]]
     if isinstance(adapter, str):
-        return [["#Adapter: adapter 创建失败"]]
+        return [["#Adapter: failed to create adapter"]]
     try:
         all_m = _collect_all_metrics(adapter)
         names = _flatten_metrics_arg(metrics)
         if not names:
-            return [["#Adapter: metrics 不能为空"]]
+            return [["#Adapter: metrics cannot be empty"]]
         triples = []
         for nm in names:
             m, _ = _find_metric(all_m, nm)
@@ -760,16 +760,16 @@ def adapter_metrics_by_category(adapter, category, layout="V"):
     bucket_key：用于区分 VAR/ES 的 Horizon（如 1D/10D）、KRD 的 tenor 桶等。
     """
     if adapter is None:
-        return [["#Adapter: adapter 为空"]]
+        return [["#Adapter: adapter is empty"]]
     if isinstance(adapter, str):
-        return [["#Adapter: adapter 创建失败"]]
+        return [["#Adapter: failed to create adapter"]]
     cat = str(category).strip().lower() if category else ""
     if cat not in _CATEGORY_METHODS:
-        return [[f"#Adapter: category 需为 valuation/risk/attribution/carry/credit_risk 之一"]]
+        return [[f"#Adapter: category must be one of valuation/risk/attribution/carry/credit_risk"]]
     try:
         metrics = _collect_all_metrics(adapter, sources=[cat])
         if not metrics:
-            return [["#Adapter: 无该类别指标"]]
+            return [["#Adapter: no metrics in this category"]]
         triples = []  # (metric_name, bucket_key, value)
         for m in metrics:
             nm = getattr(m, "metric_name", None) or getattr(m, "description", "") or ""
@@ -779,7 +779,7 @@ def adapter_metrics_by_category(adapter, category, layout="V"):
             bk  = _get_bucket_key(m)
             triples.append((str(nm), bk, val))
         if not triples:
-            return [["#Adapter: 无该类别指标"]]
+            return [["#Adapter: no metrics in this category"]]
         if layout and str(layout).strip().upper() == "H":
             return [
                 [t[0] for t in triples],   # row 1: metric_name
@@ -804,16 +804,16 @@ def bond_adapter_set_previous_curve(adapter, curve):
     成功返回同一 adapter 对象。
     """
     if adapter is None:
-        return "#Adapter: adapter 为空"
+        return "#Adapter: adapter is empty"
     if isinstance(adapter, str):
-        return "#Adapter: adapter 创建失败"
+        return "#Adapter: failed to create adapter"
     if curve is None:
-        return "#Adapter: curve 为空"
+        return "#Adapter: curve is empty"
     try:
         if hasattr(adapter, "SetPreviousCurve"):
             adapter.SetPreviousCurve(curve)
         else:
-            return "#Adapter: 无 SetPreviousCurve"
+            return "#Adapter: SetPreviousCurve is not available"
         return adapter
     except Exception as e:
         return f"#Adapter: {e}"
@@ -830,16 +830,16 @@ def adapter_metric_meta(adapter, metric_name, field=None):
     可选 field: metric_name, value, description, currency, unit_code, unit_raw, risk_class, risk_factor_id, leg, time_unit
     """
     if adapter is None:
-        return "#Adapter: adapter 为空"
+        return "#Adapter: adapter is empty"
     if isinstance(adapter, str):
-        return "#Adapter: adapter 创建失败"
+        return "#Adapter: failed to create adapter"
     if not metric_name or not str(metric_name).strip():
-        return "#Adapter: metric_name 不能为空"
+        return "#Adapter: metric_name cannot be empty"
     try:
         metrics = _collect_all_metrics(adapter)
         m, _ = _find_metric(metrics, metric_name)
         if m is None:
-            return f"#Adapter: 无 {str(metric_name).strip()} 结果"
+            return f"#Adapter: no {str(metric_name).strip()} result"
         f = str(field).strip() if field else ""
         if f:
             if hasattr(m, f):
@@ -847,7 +847,7 @@ def adapter_metric_meta(adapter, metric_name, field=None):
                 if hasattr(v, "tenor") or hasattr(v, "bucket_value"):
                     return getattr(v, "tenor", None) or getattr(v, "bucket_value", str(v))
                 return v
-            return f"#Adapter: 无字段 {f}"
+            return f"#Adapter: field not found {f}"
         out = []
         for fn in _META_FIELDS:
             if hasattr(m, fn):

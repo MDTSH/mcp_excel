@@ -411,7 +411,7 @@ def HvsGetVol(hv, referenceDate, sampleNum=0):
     从历史波动率对象获取某日波动率（可选样本数）。
     """
     if hv is None or isinstance(hv, str):
-        return hv if hv else "HvsGetVol: HistVols 为空"
+        return hv if hv else "HvsGetVol: HistVols is empty"
     s = hv.GetVol(mcp_dt.to_date1(referenceDate), sampleNum)
     return s
 

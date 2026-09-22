@@ -503,6 +503,21 @@ rcFixedPaymentLag = _rc_excel_func("rcFixedPaymentLag", "fixedPaymentLag", as_ty
 rcFloatPaymentLag = _rc_excel_func("rcFloatPaymentLag", "floatPaymentLag", as_type="int")
 rcFixingIndexName = _rc_excel_func("rcFixingIndexName", "fixingIndexName")
 rcFloatTenor = _rc_excel_func("rcFloatTenor", "fixingIndexTenor", "floatTenor")
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("rc", "object")
+def rcFixingIndexTenor(rc):
+    """返回 RateConvention 定息指数期限字符串，例如 3M、7D。"""
+    try:
+        val = _rc_get(rc, field_key="fixingIndexTenor", getter_name="floatTenor")
+        if val is None:
+            return ""
+        if hasattr(val, "ToString"):
+            return str(val.ToString())
+        return str(val)
+    except Exception as e:
+        return f"rcFixingIndexTenor except: {e}"
 rcConventionName = _rc_excel_func("rcConventionName", "fixingIndexName", "conventionName")
 
 
@@ -1253,7 +1268,7 @@ _FXFP2_CROSS_KV_WITH_LEGS = [
 
 def _fxfp2_build_cross_curve(leg1, leg2, kv_dict: Dict[str, Any]):
     if leg1 is None or leg2 is None:
-        raise ValueError("Leg1/Leg2 为空")
+        raise ValueError("Leg1/Leg2 is empty")
     calendar = kv_dict.get("Calendar")
     reference_date = kv_dict.get("ReferenceDate") or None
     spot_date = kv_dict.get("SpotDate") or None
@@ -1922,13 +1937,13 @@ def McpXccyBasisCurve(args1, args2, args3, args4, args5, fmt="VP"):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("json_file", "str", "XCCY_BASIS_CURVE_SAMPLE.json 路径")
-@xl_arg("curve_id", "str", "如 USDCNY_XCCY_BASIS / USDCNY_XCCY_BASIS_SWAP")
-@xl_arg("usdDiscountCurve", "object", "TermLegDiscountingCurve / USD 折现")
+@xl_arg("json_file", "str", "path to XCCY_BASIS_CURVE_SAMPLE.json")
+@xl_arg("curve_id", "str", "e.g. USDCNY_XCCY_BASIS / USDCNY_XCCY_BASIS_SWAP")
+@xl_arg("usdDiscountCurve", "object", "TermLegDiscountingCurve / USD discount")
 @xl_arg("cnyCleanCurve", "object", "UnderlyingCurve / CNY clean")
-@xl_arg("fxForwardPointsCurve", "object", "Path A2 必填：被引 FXFP 曲线对象")
-@xl_arg("cnyEstimationCurve", "object", "Path B 可选，默认=cnyCleanCurve")
-@xl_arg("usdEstimationCurve", "object", "Path B 可选，默认=usdDiscountCurve")
+@xl_arg("fxForwardPointsCurve", "object", "Path A2 required: referenced FXFP curve object")
+@xl_arg("cnyEstimationCurve", "object", "Path B optional, default=cnyCleanCurve")
+@xl_arg("usdEstimationCurve", "object", "Path B optional, default=usdDiscountCurve")
 def McpXccyBasisCurveFromJson(json_file, curve_id, usdDiscountCurve, cnyCleanCurve,
                               fxForwardPointsCurve=None, cnyEstimationCurve=None,
                               usdEstimationCurve=None):

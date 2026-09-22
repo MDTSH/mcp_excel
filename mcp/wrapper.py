@@ -53,6 +53,45 @@ def to_mcp_args(args):
     return result
 
 
+def _is_mcp_typed_obj(obj):
+    return is_mcp_wrapper(obj) or hasattr(obj, "this")
+
+
+def _vanilla_swap_keep_typed_args(args):
+    """Typed MVanillaSwap overloads need SWIG class pointers, not void* handlers.
+
+    C++ type-safe ctors (no frequency / history):
+      EndDate 11: Ref, Start, End, PayRecv, MRateConvention*, MCalendar*,
+                  coupon, notional, MSwapCurve*, MSwapCurve*, MSwapCurve*
+      EndDate 12: + RollDate after End
+      Tenor 11/12: Ref, Start, Tenor, PayRecv, MRateConvention*, coupon, notional,
+                   3x MSwapCurve*, MCalendar*, [adjustStartDate]
+      Tenor 12/13: + RollDate after Tenor
+    The void* siblings need extra FixedFrequency/FloatingFrequency ints; stripping
+    handlers on the 11/12-arg typed path makes SWIG miss every overload.
+    """
+    n = len(args)
+    if n < 11:
+        return False
+
+    def obj(i):
+        return i < n and _is_mcp_typed_obj(args[i])
+
+    # EndDate, no RollDate
+    if n == 11 and obj(4) and obj(5) and obj(8) and obj(9) and obj(10):
+        return True
+    # EndDate + RollDate
+    if n == 12 and obj(5) and obj(6) and obj(9) and obj(10) and obj(11):
+        return True
+    # Tenor, no RollDate: coupon at [5] is a number, calendar at [10]
+    if n in (11, 12) and obj(4) and not obj(5) and obj(7) and obj(8) and obj(9) and obj(10):
+        return True
+    # Tenor + RollDate: coupon at [6] is a number, calendar at [11]
+    if n in (12, 13) and obj(5) and not obj(6) and obj(8) and obj(9) and obj(10) and obj(11):
+        return True
+    return False
+
+
 def find_args_def_kv(tool_def, name, count, vals):
     item = tool_def.get_item(name)
     if item is None:
@@ -500,7 +539,11 @@ class McpBondAdapter:
 
 
 class McpRawMarketManager:
-    """Python 封装类，Raw Market Data 管理器。Excel 应返回 McpRawMarketManager@0。内部持有 MRawMarketManager 或 RawMarketDataManager，委托所有调用。参考 EXCEL_INTEGRATION_PITFALLS 2.3。"""
+    """Python 封装类，Raw Market Data 管理器。Excel 应返回 McpRawMarketManager@0。
+
+    假日文件：setHolidaysPath 或 root 目录下 calendar.txt / Holidays.txt。
+    Excel：=McpRawMarketManager(root, holidays_file) / rawmdGetCalendar(mgr, code)。
+    """
 
     def __init__(self, manager):
         self._mgr = manager
@@ -572,7 +615,11 @@ def excel_mcp_object_handle(inner, display_class_name: str):
 
 
 class McpLiveMarketDataStore:
-    """全量快照 + 增量 patch；get* 返回的 M* 指针在 applyUpdate 后保持稳定（原地换芯）。"""
+    """全量快照 + 增量 patch；get* 返回的 M* 指针在 applyUpdate 后保持稳定（原地换芯）。
+
+    假日文件：构造前 setHolidaysPath，或 JSON 同目录 calendar.txt / Holidays.txt。
+    Excel：mdlsGetCalendar(store, code) / mdlsCalendarCodes(store) / mdlsHolidaysPath(store)。
+    """
 
     def __init__(self, store):
         self._s = store
@@ -1832,7 +1879,10 @@ class McpVanillaSwap(mcp.mcp.MVanillaSwap):
 
         self.raw_args = args
         self.is_mcp_wrapper = True
-        mcp_args = to_mcp_args(args)
+        if _vanilla_swap_keep_typed_args(args):
+            mcp_args = args
+        else:
+            mcp_args = to_mcp_args(args)
         # print("McpVanillaSwap mcp_args:",mcp_args)
         super().__init__(*mcp_args)
 
@@ -2459,6 +2509,10 @@ class McpOptionData(mcp.mcp.MOptionData):
 
 
 class McpLocalVol(mcp.mcp.MLocalVol):
+
+    def GenerateReport(self, traceDir=""):
+        from mcp.utils.localvol_report import generate_localvol_report
+        return generate_localvol_report(self, traceDir) or ""
 
     def __init__(self, *args):
         self.is_mcp_wrapper = True

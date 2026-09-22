@@ -64,7 +64,7 @@ def _parse_data_to_records(data, asset_type):
     from csv_reader import AssetRecord  # type: ignore
     
     if not data or len(data) < 2:
-        raise ValueError('输入数据至少需要包含表头行和一行数据')
+        raise ValueError('input must include a header row and at least one data row')
     
     header_row = data[0]
     field_names = [str(field).strip() if field is not None else '' for field in header_row]
@@ -107,7 +107,7 @@ def _parse_data_to_records(data, asset_type):
             continue
     
     if not records:
-        raise ValueError('没有找到有效的交易记录')
+        raise ValueError('no valid trade records found')
     
     return records
 
@@ -141,7 +141,7 @@ class AssetPortfolioManager:
         
         config_file_path = os.path.join(_valuation_demo_path, "config.json")
         if not os.path.exists(config_file_path):
-            raise FileNotFoundError(f"配置文件未找到: {config_file_path}")
+            raise FileNotFoundError(f"config file not found: {config_file_path}")
         
         self.valuator = BatchValuator(config_file_path)
         self.config_loader = ConfigLoader(config_file_path)
@@ -939,7 +939,7 @@ def McpPortfolioAdapter(
             
             # 验证日期格式
             if not valuation_date or len(valuation_date) != 10 or valuation_date.count('-') != 2:
-                raise ValueError(f"无效的估值日期格式: {valuation_date}。期望格式: YYYY-MM-DD")
+                raise ValueError(f"invalid valuation date format: {valuation_date}. Expected format: YYYY-MM-DD")
         
         # 创建 AssetPortfolioManager
         manager = AssetPortfolioManager(
@@ -981,7 +981,7 @@ def PortGetScenarioIds(manager_id):
             manager_id = manager_id[1:]
         
         if manager_id not in _asset_portfolio_managers:
-            return [['ERROR'], [f'管理器ID不存在: {manager_id}']]
+            return [['ERROR'], [f'manager ID not found: {manager_id}']]
         
         manager = _asset_portfolio_managers[manager_id]
         scenario_ids = manager.get_scenario_ids()
@@ -991,7 +991,7 @@ def PortGetScenarioIds(manager_id):
     
     except Exception as e:
         traceback.print_exc()
-        return [['ERROR'], [f'获取场景ID失败: {str(e)}']]
+        return [['ERROR'], [f'failed to get scenario ID: {str(e)}']]
 
 
 @xl_func(macro=False, recalc_on_open=True, thread_safe=False, auto_resize=True)
@@ -1077,7 +1077,7 @@ def PortMetrics(manager_id, level='', scenario_id='', metric_category='', output
                 if use_transpose:
                     return [['InstrumentId', 'ScenarioId', 'Level'], ['', '', '']]
                 return [['ScenarioId', 'InstrumentId', 'Level', 'MetricName', 'Value', 'Currency', 'Unit', 'Category', 'Description', 'Bucket', 'Leg'],
-                        ['', '', '', 'WARNING', 0.0, '', '', 'Warning', '没有找到任何指标', '', '']]
+                        ['', '', '', 'WARNING', 0.0, '', '', 'Warning', 'no metrics found', '', '']]
             
             # 根据输出格式转换
             if use_transpose:
@@ -1110,7 +1110,7 @@ def PortMetrics(manager_id, level='', scenario_id='', metric_category='', output
             if use_transpose:
                 return [['InstrumentId', 'ScenarioId', 'Level'], ['', '', level_upper]]
             return [['ScenarioId', 'InstrumentId', 'Level', 'MetricName', 'Value', 'Currency', 'Unit', 'Category', 'Description', 'Bucket', 'Leg'],
-                    ['', '', level_upper, 'WARNING', 0.0, '', '', 'Warning', '没有找到任何指标', '', '']]
+                    ['', '', level_upper, 'WARNING', 0.0, '', '', 'Warning', 'no metrics found', '', '']]
         
         # 根据输出格式转换
         if use_transpose:
@@ -1143,7 +1143,7 @@ def PortMetrics(manager_id, level='', scenario_id='', metric_category='', output
         if use_transpose:
             return [['InstrumentId', 'ScenarioId', 'Level'], ['', '', 'ERROR']]
         return [['ScenarioId', 'InstrumentId', 'Level', 'MetricName', 'Value', 'Currency', 'Unit', 'Category', 'Description', 'Bucket', 'Leg'],
-                ['', '', level_upper, 'ERROR', 0.0, '', '', 'Error', f'获取指标失败: {str(e)}', '', '']]
+                ['', '', level_upper, 'ERROR', 0.0, '', '', 'Error', f'failed to get metric: {str(e)}', '', '']]
 
 
 @xl_func(macro=False, recalc_on_open=True, thread_safe=False)
@@ -1166,15 +1166,15 @@ def McpGetPortfolioAdapter(manager_id, portfolio_key, scenario_id='BASE'):
             manager_id = manager_id[1:]
         
         if manager_id not in _asset_portfolio_managers:
-            return f"ERROR: 管理器ID不存在: {manager_id}"
+            return f"ERROR: manager ID not found: {manager_id}"
         
         manager = _asset_portfolio_managers[manager_id]
         
         if portfolio_key not in manager.portfolio_adapters:
-            return f"ERROR: 组合键不存在: {portfolio_key}"
+            return f"ERROR: portfolio key not found: {portfolio_key}"
         
         if scenario_id not in manager.portfolio_adapters[portfolio_key]:
-            return f"ERROR: 场景ID不存在: {scenario_id}"
+            return f"ERROR: scenario ID not found: {scenario_id}"
         
         portfolio_adapter = manager.portfolio_adapters[portfolio_key][scenario_id]
         
@@ -1214,7 +1214,7 @@ def McpPortfolioManagerGroup(manager_ids, scenario_id=''):
     """
     try:
         if not manager_ids:
-            return f"ERROR: manager_ids 不能为空"
+            return f"ERROR: manager_ids cannot be empty"
         
         # 确保 manager_ids 是列表
         if not isinstance(manager_ids, list):
@@ -1228,7 +1228,7 @@ def McpPortfolioManagerGroup(manager_ids, scenario_id=''):
                 manager_id = manager_id[1:]
             
             if manager_id not in _asset_portfolio_managers:
-                return f"ERROR: 管理器ID不存在: {manager_id}"
+                return f"ERROR: manager ID not found: {manager_id}"
             managers.append(_asset_portfolio_managers[manager_id])
         
         # 使用第一个 manager 的 valuator（所有 manager 应该共享相同的 mcp 模块）
@@ -1236,7 +1236,7 @@ def McpPortfolioManagerGroup(manager_ids, scenario_id=''):
         valuator = first_manager.valuator
         
         if not valuator.mcp:
-            return f"ERROR: mcp 模块未加载"
+            return f"ERROR: mcp module is not loaded"
         
         # 确定要使用的场景ID列表
         if scenario_id and scenario_id.strip():
@@ -1255,7 +1255,7 @@ def McpPortfolioManagerGroup(manager_ids, scenario_id=''):
         elif hasattr(valuator.mcp, 'HierarchicalPortfolioManager'):
             portfolio_manager = valuator.mcp.HierarchicalPortfolioManager()
         else:
-            return f"ERROR: HierarchicalPortfolioManager 不可用"
+            return f"ERROR: HierarchicalPortfolioManager is not available"
         
         # 从每个 manager 中获取所有的 portfolio_adapter 并添加到 HierarchicalPortfolioManager
         added_count = 0
@@ -1310,7 +1310,7 @@ def McpPortfolioManagerGroup(manager_ids, scenario_id=''):
         print(f"\n[DEBUG] McpPortfolioManagerGroup: 总共添加了 {added_count} 个 portfolio adapter")
         
         if added_count == 0:
-            return f"ERROR: 没有成功添加任何适配器到 PortfolioManager"
+            return f"ERROR: failed to add any adapter to PortfolioManager"
         
         # 生成 hierarchical_manager_id（简化版本，使用时间戳和计数器）
         import time
@@ -1349,7 +1349,7 @@ def McpClearPortfolioAdapters():
     global _asset_portfolio_managers, _hierarchical_managers
     _asset_portfolio_managers.clear()
     _hierarchical_managers.clear()
-    return "已清空所有资产组合管理器"
+    return "cleared all portfolio managers"
 
 
 @xl_func(macro=False, recalc_on_open=False, thread_safe=False, auto_resize=True)
@@ -1388,15 +1388,15 @@ def McpGetPortfolioAdapter(manager_id, portfolio_key, scenario_id='BASE'):
             manager_id = manager_id[1:]
         
         if manager_id not in _asset_portfolio_managers:
-            return f"ERROR: 管理器ID不存在: {manager_id}"
+            return f"ERROR: manager ID not found: {manager_id}"
         
         manager = _asset_portfolio_managers[manager_id]
         
         if portfolio_key not in manager.portfolio_adapters:
-            return f"ERROR: 组合键不存在: {portfolio_key}"
+            return f"ERROR: portfolio key not found: {portfolio_key}"
         
         if scenario_id not in manager.portfolio_adapters[portfolio_key]:
-            return f"ERROR: 场景ID不存在: {scenario_id}"
+            return f"ERROR: scenario ID not found: {scenario_id}"
         
         portfolio_adapter = manager.portfolio_adapters[portfolio_key][scenario_id]
         
@@ -1436,7 +1436,7 @@ def McpPortfolioManagerGroup(manager_ids, scenario_id=''):
     """
     try:
         if not manager_ids:
-            return f"ERROR: manager_ids 不能为空"
+            return f"ERROR: manager_ids cannot be empty"
         
         # 确保 manager_ids 是列表
         if not isinstance(manager_ids, list):
@@ -1450,7 +1450,7 @@ def McpPortfolioManagerGroup(manager_ids, scenario_id=''):
                 manager_id = manager_id[1:]
             
             if manager_id not in _asset_portfolio_managers:
-                return f"ERROR: 管理器ID不存在: {manager_id}"
+                return f"ERROR: manager ID not found: {manager_id}"
             managers.append(_asset_portfolio_managers[manager_id])
         
         # 使用第一个 manager 的 valuator（所有 manager 应该共享相同的 mcp 模块）
@@ -1458,7 +1458,7 @@ def McpPortfolioManagerGroup(manager_ids, scenario_id=''):
         valuator = first_manager.valuator
         
         if not valuator.mcp:
-            return f"ERROR: mcp 模块未加载"
+            return f"ERROR: mcp module is not loaded"
         
         # 确定要使用的场景ID列表
         if scenario_id and scenario_id.strip():
@@ -1477,7 +1477,7 @@ def McpPortfolioManagerGroup(manager_ids, scenario_id=''):
         elif hasattr(valuator.mcp, 'HierarchicalPortfolioManager'):
             portfolio_manager = valuator.mcp.HierarchicalPortfolioManager()
         else:
-            return f"ERROR: HierarchicalPortfolioManager 不可用"
+            return f"ERROR: HierarchicalPortfolioManager is not available"
         
         # 从每个 manager 中获取所有的 portfolio_adapter 并添加到 HierarchicalPortfolioManager
         added_count = 0
@@ -1532,7 +1532,7 @@ def McpPortfolioManagerGroup(manager_ids, scenario_id=''):
         print(f"\n[DEBUG] McpPortfolioManagerGroup: 总共添加了 {added_count} 个 portfolio adapter")
         
         if added_count == 0:
-            return f"ERROR: 没有成功添加任何适配器到 PortfolioManager"
+            return f"ERROR: failed to add any adapter to PortfolioManager"
         
         # 生成 hierarchical_manager_id（简化版本，使用时间戳和计数器）
         import time
@@ -1571,7 +1571,7 @@ def McpClearPortfolioAdapters():
     global _asset_portfolio_managers, _hierarchical_managers
     _asset_portfolio_managers.clear()
     _hierarchical_managers.clear()
-    return "已清空所有资产组合管理器"
+    return "cleared all portfolio managers"
 
 
 @xl_func(macro=False, recalc_on_open=False, thread_safe=False, auto_resize=True)

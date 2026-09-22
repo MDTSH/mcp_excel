@@ -107,7 +107,7 @@ def MCallableBond(args1, args2, fmt='VP|VP'):
         args1_fmt = args1_fmt.strip().upper()
         args2_fmt = args2_fmt.strip().upper()
         if args1_fmt not in ["VP", "HD"] or args2_fmt not in ["VP", "HD"]:
-            raise ValueError("fmt格式仅支持 VP(纵向) 或 HD(横向)，示例：VP|HD、HD|VP")
+            raise ValueError("fmt only supports VP (vertical) or HD (horizontal), e.g. VP|HD, HD|VP")
     except ValueError as e:
         error_msg = f"解析fmt参数失败：{e}，正确格式示例：VP|VP、VP|HD"
         print(error_msg)
@@ -149,15 +149,15 @@ def MCallableBond(args1, args2, fmt='VP|VP'):
 
         # 校验 args1 核心参数
         if not default_args1["ReferenceDate"]:
-            raise ValueError("args1中必须传入 ReferenceDate 参数")
+            raise ValueError("args1 must include ReferenceDate")
         if not default_args1["FixedRateBond"]:
-            raise ValueError("args1中必须传入 FixedRateBond 参数")
+            raise ValueError("args1 must include FixedRateBond")
         if not default_args1["BenchmarkCurve"]:
-            raise ValueError("args1中必须传入 BenchmarkCurve 参数")
+            raise ValueError("args1 must include BenchmarkCurve")
         if default_args1["VolDates"] is None:
-            raise ValueError("args1中必须传入 VolDates 参数")
+            raise ValueError("args1 must include VolDates")
         if default_args1["IrVols"] is None:
-            raise ValueError("args1中必须传入 IrVols 参数")
+            raise ValueError("args1 must include IrVols")
 
         # 转换 ReferenceDate 格式
         reference_date = excel_date_to_string(default_args1["ReferenceDate"])
@@ -167,8 +167,8 @@ def MCallableBond(args1, args2, fmt='VP|VP'):
         # 检查 BondOptionType 类是否有该属性
         if not hasattr(BondOptionType, option_type_str):
             raise ValueError(
-                f"无效的OptionType：{option_type_str}，"
-                f"支持的类型：{[attr for attr in dir(BondOptionType) if not attr.startswith('__')]}"
+                f"invalid OptionType: {option_type_str}, "
+                f"supported types: {[attr for attr in dir(BondOptionType) if not attr.startswith('__')]}"
             )
         # 从 BondOptionType 类中获取对应的数值
         option_type_call = getattr(BondOptionType, option_type_str)
@@ -198,7 +198,7 @@ def MCallableBond(args1, args2, fmt='VP|VP'):
 
         else:  # args2 横向：[['ExerciseDates','Strikes'], [d1,s1], [d2,s2]]
             if len(args2) < 2:
-                raise ValueError("HD格式args2至少需要2行（表头+数据）")
+                raise ValueError("HD fmt args2 needs at least 2 rows (header + data)")
 
             # 提取表头和数据行
             header = [k.strip() for k in args2[0]]
@@ -206,7 +206,7 @@ def MCallableBond(args1, args2, fmt='VP|VP'):
 
             # 找到日期和价格的列索引
             if "ExerciseDates" not in header or "Strikes" not in header:
-                raise ValueError("HD格式args2表头必须包含 ExerciseDates 和 Strikes")
+                raise ValueError("HD fmt args2 header must include ExerciseDates and Strikes")
             date_col_idx = header.index("ExerciseDates")
             strike_col_idx = header.index("Strikes")
 
@@ -237,11 +237,11 @@ def MCallableBond(args1, args2, fmt='VP|VP'):
         print(f"strikes_str 内容: {strikes_str}")
         # 校验行权参数
         if not exercise_dates_str:
-            raise ValueError("args2中未传入有效的 ExerciseDates")
+            raise ValueError("args2 has no valid ExerciseDates")
         if not strikes_str:
-            raise ValueError("args2中未传入有效的 Strikes")
+            raise ValueError("args2 has no valid Strikes")
         if len(exercise_dates) != len(strikes):
-            raise ValueError(f"ExerciseDates数量({len(exercise_dates)})与Strikes数量({len(strikes)})不匹配")
+            raise ValueError(f"ExerciseDates count ({len(exercise_dates)}) does not match Strikes count ({len(strikes)})")
 
         # 4. 调用原核心逻辑创建可赎回债券
         fixedratebond = default_args1["FixedRateBond"]
@@ -2483,7 +2483,7 @@ def PortMetrics(adapter, metric=None, orientation='VL'):
     else:
         # 如果指定了 metric，先校验有效性
         if metric not in metrics:
-            return [[f"无效指标名！可选指标：{list(metrics.keys())}"]]
+            return [[f"Invalid metric name. Available metrics: {list(metrics.keys())}"]]
 
         # 返回指定 metric 的数据
         target_metrics_list = metrics[metric]
@@ -3044,7 +3044,7 @@ def PortfolioMetrics(portfolioAdapter, metric=None, orientation='VL'):
     else:
         # 如果指定了 metric，先校验有效性
         if metric not in metrics:
-            return [[f"无效指标名！可选指标：{list(metrics.keys())}"]]
+            return [[f"Invalid metric name. Available metrics: {list(metrics.keys())}"]]
         
         # 返回指定 metric 的数据
         target_metrics_list = metrics[metric]
@@ -3236,7 +3236,7 @@ def PortHierarchicalMetrics(hierarchical, parentkey, metric=None, orientation='V
     else:
         # 如果指定了 metric，先校验有效性
         if metric not in metrics:
-            return [[f"无效指标名！可选指标：{list(metrics.keys())}"]]
+            return [[f"Invalid metric name. Available metrics: {list(metrics.keys())}"]]
         
         # 返回指定 metric 的数据
         target_metrics_list = metrics[metric]

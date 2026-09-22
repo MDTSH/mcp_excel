@@ -922,7 +922,7 @@ def McpParseList(list_in, parse_dates=True):
         try:
             items = ast.literal_eval(list_in)
         except Exception as e:
-            raise ValueError(f"不能解析的列表字符串: {e}")
+            raise ValueError(f"cannot parse list string: {e}")
     else:
         # 假如 Excel 传进来的是二维数组（list of list），则先拍平成一维
         if isinstance(list_in, (list, tuple)) and len(list_in) > 0 and isinstance(list_in[0], (list, tuple)):

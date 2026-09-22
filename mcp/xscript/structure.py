@@ -37,6 +37,18 @@ def _localvol_err(x):
     )
 
 
+def _localvol_handler(x):
+    """进 C++ 前确认 getHandler() 非空，避免 MXScriptStructure 对空指针解引用。"""
+    if x is None or not hasattr(x, 'getHandler'):
+        _localvol_err(x)
+    handler = x.getHandler()
+    if handler is None:
+        raise ValueError(
+            f'LocalVol getHandler() returned null, got {type(x).__name__}: {str(x)[:80]}'
+        )
+    return handler
+
+
 def _sdp_explicit_schedule_dates_json(raw):
     """见 normalize_sdp_schedule_dates_json（与 McpStructuredDerivativeProduct 路径约定一致）。"""
     return normalize_sdp_schedule_dates_json(raw)
@@ -622,7 +634,7 @@ class McpXScriptStructure(MXScriptStructure):
             ]
             self.key_parse_func = {
                 'NumSimulation': lambda x: int(float(x)),
-                'LocalVol': lambda x: x.getHandler() if hasattr(x, 'getHandler') else (_localvol_err(x)),
+                'LocalVol': _localvol_handler,
                 'LogLevel': lambda x: enum_wrapper.parse2(x, 'LogLevel'),
                 'BuySell': lambda x: enum_wrapper.parse2(x, 'BuySell'),
             }
@@ -648,7 +660,7 @@ class McpXScriptStructure(MXScriptStructure):
             self.key_parse_func = {
                 'ModelType':lambda x: enum_wrapper.parse2(x, 'ModelType'),
                 'NumSimulation': lambda x: int(float(x)),
-                'LocalVol': lambda x: x.getHandler() if hasattr(x, 'getHandler') else (_localvol_err(x)),
+                'LocalVol': _localvol_handler,
                 'LogLevel': lambda x: enum_wrapper.parse2(x, 'LogLevel'),
                 'BuySell': lambda x: enum_wrapper.parse2(x, 'BuySell'),
             }

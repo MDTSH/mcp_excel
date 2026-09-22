@@ -16,7 +16,7 @@ import gc
 import logging
 import os
 
-from pyxll import xl_on_close
+from pyxll import xl_on_close, xl_on_reload
 
 _log = logging.getLogger(__name__)
 
@@ -47,6 +47,17 @@ def _safe(fn, label):
         fn()
     except Exception as e:
         _log.warning("mcp_on_close: %s failed: %s", label, e)
+
+
+@xl_on_reload
+def mcp_on_reload(results):
+    """PyXLL reload 后重新武装打开期门控（下次打开工作簿仍受保护）。"""
+    try:
+        from mcp.utils.excel_open_gate import reset_after_reload
+
+        reset_after_reload()
+    except Exception:
+        pass
 
 
 @xl_on_close
@@ -123,6 +134,11 @@ def mcp_on_close():
         if process_pool.pool is not None:
             process_pool.dispose()
 
+    def _open_gate():
+        from mcp.utils import excel_open_gate
+
+        excel_open_gate.reset_after_close()
+
     for label, fn in (
         ("foundation", _foundation),
         ("rawmd", _rawmd),
@@ -136,6 +152,7 @@ def mcp_on_close():
         ("wrapper", _wrapper),
         ("async", _async),
         ("process_pool", _process_pool),
+        ("open_gate", _open_gate),
     ):
         _safe(fn, label)
 

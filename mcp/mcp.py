@@ -565,6 +565,9 @@ class MStructuredDerivativeProduct(object):
     def ESCurve(self, confidenceLevel=0.95):
         return _mcp.MStructuredDerivativeProduct_ESCurve(self, confidenceLevel)
 
+    def SetTraceDirectory(self, strDirectory):
+        return _mcp.MStructuredDerivativeProduct_SetTraceDirectory(self, strDirectory)
+
     def GetTraceFileName(self):
         return _mcp.MStructuredDerivativeProduct_GetTraceFileName(self)
 
@@ -6366,6 +6369,12 @@ class MRawMarketManager(object):
     def getRoot(self):
         return _mcp.MRawMarketManager_getRoot(self)
 
+    def setHolidaysPath(self, holidays_file_path):
+        return _mcp.MRawMarketManager_setHolidaysPath(self, holidays_file_path)
+
+    def holidaysPath(self):
+        return _mcp.MRawMarketManager_holidaysPath(self)
+
     def getYieldCurve(self, curve_id, valuation_date):
         return _mcp.MRawMarketManager_getYieldCurve(self, curve_id, valuation_date)
 
@@ -6505,6 +6514,12 @@ class MLiveMarketDataStore(object):
     def __init__(self):
         _mcp.MLiveMarketDataStore_swiginit(self, _mcp.new_MLiveMarketDataStore())
     __swig_destroy__ = _mcp.delete_MLiveMarketDataStore
+
+    def setHolidaysPath(self, holidays_file_path):
+        return _mcp.MLiveMarketDataStore_setHolidaysPath(self, holidays_file_path)
+
+    def holidaysPath(self):
+        return _mcp.MLiveMarketDataStore_holidaysPath(self)
 
     def loadSnapshot(self, json_file_path):
         return _mcp.MLiveMarketDataStore_loadSnapshot(self, json_file_path)
@@ -6901,6 +6916,32 @@ Metric_IMPAIRMENT_ALLOWANCE = _mcp.Metric_IMPAIRMENT_ALLOWANCE
 Metric_YIELD_TO_WORST = _mcp.Metric_YIELD_TO_WORST
 Metric_DURATION_TO_WORST = _mcp.Metric_DURATION_TO_WORST
 Metric_TENOR_TO_WORST = _mcp.Metric_TENOR_TO_WORST
+Metric_KNOCKOUT_PROB = _mcp.Metric_KNOCKOUT_PROB
+Metric_KNOCKIN_PROB = _mcp.Metric_KNOCKIN_PROB
+Metric_ALIVE_PROB = _mcp.Metric_ALIVE_PROB
+Metric_BARRIER_DISTANCE_SIGMA = _mcp.Metric_BARRIER_DISTANCE_SIGMA
+Metric_ITM_PROB = _mcp.Metric_ITM_PROB
+Metric_IN_RANGE_RATIO = _mcp.Metric_IN_RANGE_RATIO
+Metric_LOW_TOUCH_PROB = _mcp.Metric_LOW_TOUCH_PROB
+Metric_FRTB_IR_CHARGE = _mcp.Metric_FRTB_IR_CHARGE
+Metric_FRTB_FX_CHARGE = _mcp.Metric_FRTB_FX_CHARGE
+Metric_FRTB_CM_CHARGE = _mcp.Metric_FRTB_CM_CHARGE
+Metric_FRTB_EQ_CHARGE = _mcp.Metric_FRTB_EQ_CHARGE
+Metric_FRTB_TOTAL_CHARGE = _mcp.Metric_FRTB_TOTAL_CHARGE
+Metric_FRTB_RWA = _mcp.Metric_FRTB_RWA
+Metric_FRTB_POSITION_COUNT = _mcp.Metric_FRTB_POSITION_COUNT
+Metric_FRTB_UNWIRED_COUNT = _mcp.Metric_FRTB_UNWIRED_COUNT
+Metric_FRTB_MISSING_FX_COUNT = _mcp.Metric_FRTB_MISSING_FX_COUNT
+Metric_FRTB_SA_GIRR_DELTA = _mcp.Metric_FRTB_SA_GIRR_DELTA
+Metric_FRTB_SA_GIRR_CHARGE = _mcp.Metric_FRTB_SA_GIRR_CHARGE
+Metric_FRTB_SA_GIRR_VEGA = _mcp.Metric_FRTB_SA_GIRR_VEGA
+Metric_FRTB_SA_GIRR_CURV = _mcp.Metric_FRTB_SA_GIRR_CURV
+Metric_FRTB_SA_FX_DELTA = _mcp.Metric_FRTB_SA_FX_DELTA
+Metric_FRTB_SA_FX_CHARGE = _mcp.Metric_FRTB_SA_FX_CHARGE
+Metric_FRTB_SA_FX_VEGA = _mcp.Metric_FRTB_SA_FX_VEGA
+Metric_FRTB_SA_FX_CURV = _mcp.Metric_FRTB_SA_FX_CURV
+Metric_FRTB_SA_SBM = _mcp.Metric_FRTB_SA_SBM
+Metric_FRTB_SA_TOTAL = _mcp.Metric_FRTB_SA_TOTAL
 UnitCode_CCY = _mcp.UnitCode_CCY
 UnitCode_CCY_PER_BP = _mcp.UnitCode_CCY_PER_BP
 UnitCode_CCY_PER_BP2 = _mcp.UnitCode_CCY_PER_BP2
@@ -7235,6 +7276,18 @@ class Instrument(object):
     def calculateCashflowSchedule(self, useYieldCurve=True):
         return _mcp.Instrument_calculateCashflowSchedule(self, useYieldCurve)
 
+    def calculateFrtbBasePositions(self):
+        return _mcp.Instrument_calculateFrtbBasePositions(self)
+
+    def setFrtbProjectionContext(self, ctx):
+        return _mcp.Instrument_setFrtbProjectionContext(self, ctx)
+
+    def getFrtbProjectionContext(self):
+        return _mcp.Instrument_getFrtbProjectionContext(self)
+
+    def hasFrtbProjectionContext(self):
+        return _mcp.Instrument_hasFrtbProjectionContext(self)
+
     def getInstrumentId(self):
         return _mcp.Instrument_getInstrumentId(self)
 
@@ -7550,11 +7603,17 @@ class BondAdapter(RateInstrument):
     def calculateCashflows(self, useYieldCurve=False):
         return _mcp.BondAdapter_calculateCashflows(self, useYieldCurve)
 
+    def calculateFrtbBasePositions(self):
+        return _mcp.BondAdapter_calculateFrtbBasePositions(self)
+
     def getNotional(self):
         return _mcp.BondAdapter_getNotional(self)
 
     def getCurrency(self):
         return _mcp.BondAdapter_getCurrency(self)
+
+    def setInstrumentCurrency(self, ccy):
+        return _mcp.BondAdapter_setInstrumentCurrency(self, ccy)
 
     def getValuationCurve(self):
         return _mcp.BondAdapter_getValuationCurve(self)
@@ -7702,9 +7761,18 @@ class BondAdapter(RateInstrument):
 
     def setMarketYieldFromTrade(self, yield_decimal):
         return _mcp.BondAdapter_setMarketYieldFromTrade(self, yield_decimal)
+    YieldBumpSource_NONE = _mcp.BondAdapter_YieldBumpSource_NONE
+    YieldBumpSource_BOND_YIELD_OVERRIDE = _mcp.BondAdapter_YieldBumpSource_BOND_YIELD_OVERRIDE
+    YieldBumpSource_CURVE_LEVEL_PROPAGATION = _mcp.BondAdapter_YieldBumpSource_CURVE_LEVEL_PROPAGATION
 
     def setYieldBumpBps(self, bump_bps):
         return _mcp.BondAdapter_setYieldBumpBps(self, bump_bps)
+
+    def setYieldBumpSource(self, source):
+        return _mcp.BondAdapter_setYieldBumpSource(self, source)
+
+    def getYieldBumpSource(self):
+        return _mcp.BondAdapter_getYieldBumpSource(self)
 
     def setBondQuantityForMetrics(self, holding_lots, contract_size_cny_per_lot):
         return _mcp.BondAdapter_setBondQuantityForMetrics(self, holding_lots, contract_size_cny_per_lot)
@@ -7852,6 +7920,9 @@ class EquitySpotAdapter(FutureInstrument):
 
     def calculateCashflows(self, useYieldCurve=False):
         return _mcp.EquitySpotAdapter_calculateCashflows(self, useYieldCurve)
+
+    def calculateFrtbBasePositions(self):
+        return _mcp.EquitySpotAdapter_calculateFrtbBasePositions(self)
 
     def getUnderlying(self):
         return _mcp.EquitySpotAdapter_getUnderlying(self)
@@ -8064,6 +8135,9 @@ class BondFutureAdapter(RateInstrument):
     def calculateCashflows(self, useYieldCurve=False):
         return _mcp.BondFutureAdapter_calculateCashflows(self, useYieldCurve)
 
+    def calculateFrtbBasePositions(self):
+        return _mcp.BondFutureAdapter_calculateFrtbBasePositions(self)
+
     def getNotional(self):
         return _mcp.BondFutureAdapter_getNotional(self)
 
@@ -8193,6 +8267,9 @@ class FXOptionsAdapter(OptionInstrument):
 
     def calculateCashflows(self, useYieldCurve=False):
         return _mcp.FXOptionsAdapter_calculateCashflows(self, useYieldCurve)
+
+    def calculateFrtbBasePositions(self):
+        return _mcp.FXOptionsAdapter_calculateFrtbBasePositions(self)
 
     def getStrike(self):
         return _mcp.FXOptionsAdapter_getStrike(self)
@@ -8411,6 +8488,9 @@ class VanillaSwapAdapter(RateInstrument):
 
     def calculateCashflowSchedule(self, useYieldCurve=True):
         return _mcp.VanillaSwapAdapter_calculateCashflowSchedule(self, useYieldCurve)
+
+    def calculateFrtbBasePositions(self):
+        return _mcp.VanillaSwapAdapter_calculateFrtbBasePositions(self)
 
     def getNotional(self):
         return _mcp.VanillaSwapAdapter_getNotional(self)
@@ -9328,6 +9408,9 @@ class RepoAdapter(RateInstrument):
     def calculateCashflows(self, useYieldCurve=False):
         return _mcp.RepoAdapter_calculateCashflows(self, useYieldCurve)
 
+    def calculateFrtbBasePositions(self):
+        return _mcp.RepoAdapter_calculateFrtbBasePositions(self)
+
     def getNotional(self):
         return _mcp.RepoAdapter_getNotional(self)
 
@@ -9418,6 +9501,9 @@ class LoanAndDeposAdapter(RateInstrument):
 
     def calculateCashflows(self, useYieldCurve=False):
         return _mcp.LoanAndDeposAdapter_calculateCashflows(self, useYieldCurve)
+
+    def calculateFrtbBasePositions(self):
+        return _mcp.LoanAndDeposAdapter_calculateFrtbBasePositions(self)
 
     def getNotional(self):
         return _mcp.LoanAndDeposAdapter_getNotional(self)
@@ -9565,6 +9651,9 @@ class BondLendingAdapter(RateInstrument):
     def calculateCashflows(self, useYieldCurve=False):
         return _mcp.BondLendingAdapter_calculateCashflows(self, useYieldCurve)
 
+    def calculateFrtbBasePositions(self):
+        return _mcp.BondLendingAdapter_calculateFrtbBasePositions(self)
+
     def getNotional(self):
         return _mcp.BondLendingAdapter_getNotional(self)
 
@@ -9708,6 +9797,9 @@ class BillRepoAdapter(RateInstrument):
     def calculateCashflows(self, useYieldCurve=False):
         return _mcp.BillRepoAdapter_calculateCashflows(self, useYieldCurve)
 
+    def calculateFrtbBasePositions(self):
+        return _mcp.BillRepoAdapter_calculateFrtbBasePositions(self)
+
     def getNotional(self):
         return _mcp.BillRepoAdapter_getNotional(self)
 
@@ -9791,6 +9883,9 @@ class FXForwardSwapAdapter(Instrument):
 
     def calculateCashflows(self, useYieldCurve=False):
         return _mcp.FXForwardSwapAdapter_calculateCashflows(self, useYieldCurve)
+
+    def calculateFrtbBasePositions(self):
+        return _mcp.FXForwardSwapAdapter_calculateFrtbBasePositions(self)
 
     def setCurves(self, *args):
         return _mcp.FXForwardSwapAdapter_setCurves(self, *args)
@@ -9960,6 +10055,9 @@ class FXNDFAdapter(Instrument):
 
     def calculateCashflows(self, useYieldCurve=False):
         return _mcp.FXNDFAdapter_calculateCashflows(self, useYieldCurve)
+
+    def calculateFrtbBasePositions(self):
+        return _mcp.FXNDFAdapter_calculateFrtbBasePositions(self)
 
     def setCurves(self, *args):
         return _mcp.FXNDFAdapter_setCurves(self, *args)
@@ -10369,6 +10467,9 @@ class FundAdapter(FutureInstrument):
     def calculateCashflows(self, useYieldCurve=False):
         return _mcp.FundAdapter_calculateCashflows(self, useYieldCurve)
 
+    def calculateFrtbBasePositions(self):
+        return _mcp.FundAdapter_calculateFrtbBasePositions(self)
+
     def getUnderlying(self):
         return _mcp.FundAdapter_getUnderlying(self)
 
@@ -10661,6 +10762,9 @@ class CommodityOptionAdapter(OptionInstrument):
     def calculateCashflows(self, useYieldCurve=False):
         return _mcp.CommodityOptionAdapter_calculateCashflows(self, useYieldCurve)
 
+    def calculateFrtbBasePositions(self):
+        return _mcp.CommodityOptionAdapter_calculateFrtbBasePositions(self)
+
     def getStrike(self):
         return _mcp.CommodityOptionAdapter_getStrike(self)
 
@@ -10784,6 +10888,9 @@ class EquityOptionAdapter(OptionInstrument):
 
     def calculateCashflows(self, useYieldCurve=False):
         return _mcp.EquityOptionAdapter_calculateCashflows(self, useYieldCurve)
+
+    def calculateFrtbBasePositions(self):
+        return _mcp.EquityOptionAdapter_calculateFrtbBasePositions(self)
 
     def getStrike(self):
         return _mcp.EquityOptionAdapter_getStrike(self)
@@ -10950,6 +11057,12 @@ class StructuredDerivativeProductAdapter(OptionInstrument):
 
     def setBondStyleCostBasisFromTrade(self, enable):
         return _mcp.StructuredDerivativeProductAdapter_setBondStyleCostBasisFromTrade(self, enable)
+
+    def setDeclaredAssetClass(self, asset_class):
+        return _mcp.StructuredDerivativeProductAdapter_setDeclaredAssetClass(self, asset_class)
+
+    def getDeclaredAssetClass(self):
+        return _mcp.StructuredDerivativeProductAdapter_getDeclaredAssetClass(self)
 
 # Register StructuredDerivativeProductAdapter in _mcp:
 _mcp.StructuredDerivativeProductAdapter_swigregister(StructuredDerivativeProductAdapter)

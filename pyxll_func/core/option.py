@@ -292,7 +292,7 @@ def McpPV(obj, isAmount=True):
             r = dmv_attr(isAmount)
         else:
             raise AttributeError(
-                f"{type(obj).__name__} 既未提供 PV 也未提供 DiscMarketValue，无法计算 McpPV"
+                f"{type(obj).__name__} neither PV nor DiscMarketValue was provided; cannot compute McpPV"
             )
     return r
 
@@ -824,7 +824,7 @@ def _vo_get_market(obj, method_name, attr_fallbacks=()):
     for attr in attr_fallbacks:
         if hasattr(obj, attr):
             return getattr(obj, attr)
-    raise AttributeError(f"{type(obj).__name__} 不支持 {method_name}")
+    raise AttributeError(f"{type(obj).__name__} does not support {method_name}")
 
 
 @xl_func(macro=False, recalc_on_open=True)

@@ -17,7 +17,9 @@ class XssLVPlot:
 
     @staticmethod
     def gen_html(fileName):
-        # 延迟导入 matplotlib 以避免 NumPy 2.0 兼容性问题
+        # 必须 Agg：Excel 计算线程里用 Tk/Qt 后端会把打开工作簿卡死。
+        import matplotlib
+        matplotlib.use("Agg", force=True)
         import matplotlib.pyplot as plt
         
         # 处理 file:/// 前缀
@@ -384,7 +386,9 @@ class XssMCPlot:
 
     @staticmethod
     def gen_html(fileName):
-        # 延迟导入 matplotlib 以避免 NumPy 2.0 兼容性问题
+        # 必须 Agg：Excel 计算线程里用 Tk/Qt 后端会把打开工作簿卡死。
+        import matplotlib
+        matplotlib.use("Agg", force=True)
         import matplotlib.pyplot as plt
         
         # 处理 file:/// 前缀
@@ -422,6 +426,7 @@ class XssMCPlot:
 
         plot_data1 = XssMCPlot.extract_plot1_data(md_content)
         plot_data2 = XssMCPlot.extract_plot2_data(md_content)
+        plot_data2 = XssMCPlot.fill_plot2_levels_from_result(md_content, plot_data2)
 
         # 将Markdown内容转换为HTML，使用扩展以支持表格和中文
         html = require("markdown", feature="LocalVol/MC HTML report").markdown(
@@ -649,6 +654,59 @@ class XssMCPlot:
         #plt.show()
         plt.savefig(save_file, dpi=100)
 
+    @staticmethod
+    def plot2_level_lines(simulation_data):
+        """PLOT2 横线：只要真正的障碍/行权价，跳过百分比和 0（StartDate 前未赋值）。"""
+        lines = []
+        if not simulation_data:
+            return lines
+        for key, value in simulation_data.items():
+            if key in ("SimulationData", "SCHEDULE"):
+                continue
+            name = str(key).upper()
+            if "PERCENT" in name or "PCT" in name:
+                continue
+            if not (name.endswith("BARRIER") or name.endswith("STRIKE") or name in ("BARRIER", "STRIKE")):
+                continue
+            try:
+                level = float(value)
+            except (TypeError, ValueError):
+                continue
+            if level == 0.0:
+                continue
+            lines.append((key, level))
+        return lines
+
+    @staticmethod
+    def fill_plot2_levels_from_result(md_content, simulation_data):
+        """旧 Trace 的 PLOT2 仍是 event0=0 时，用 Result 表补障碍/行权价。"""
+        if not simulation_data:
+            return simulation_data
+        found = {}
+        for name, raw in re.findall(
+            r"\|([A-Za-z][A-Za-z0-9_]*)\|([-+0-9.eE]+)\|", md_content or ""
+        ):
+            found[str(name).upper()] = raw
+        for key, value in list(simulation_data.items()):
+            name = str(key).upper()
+            if "PERCENT" in name or "PCT" in name:
+                continue
+            if not (name.endswith("BARRIER") or name.endswith("STRIKE") or name in ("BARRIER", "STRIKE")):
+                continue
+            try:
+                if float(value) != 0.0:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            raw = found.get(name)
+            if raw is None:
+                continue
+            try:
+                simulation_data[key] = float(raw)
+            except ValueError:
+                pass
+        return simulation_data
+
     def generate_plot2(simulation_data, save_file):
         # 延迟导入 matplotlib 以避免 NumPy 2.0 兼容性问题
         import matplotlib.pyplot as plt
@@ -666,16 +724,11 @@ class XssMCPlot:
         for step in range(num_simulations):
             plt.axvline(x=step, linestyle='--', color='gray', alpha=0.5)
             
-        # 添加上限和下限横线
-        lines = []
-        colors = ['red', 'blue', 'green', 'orange', 'purple']  # 颜色列表，可根据需要扩展
-
-        for key, value in simulation_data.items():
-            if 'STRIKE' in key.upper() or 'BARRIER' in key.upper():
-                lines.append((key, value))
+        lines = XssMCPlot.plot2_level_lines(simulation_data)
+        colors = ['red', 'blue', 'green', 'orange', 'purple']
 
         for index, (key, value) in enumerate(lines):
-            color = colors[index % len(colors)]  # 通过取模运算循环使用颜色
+            color = colors[index % len(colors)]
             plt.axhline(y=value, color=color, linewidth=2, linestyle='dashed', label=key)
 
         plt.xlabel('Time Step')

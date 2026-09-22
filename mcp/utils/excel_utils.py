@@ -81,16 +81,6 @@ class MethodName():
     McpGeneralForward = "McpGeneralForward"
     McpGeneralForwardDefine = "McpGeneralForwardDefine"
 
-    McpScheduledRatioForward = "McpScheduledRatioForward"
-    McpScheduledRatioForward2 = "McpScheduledRatioForward2"
-
-    McpSchedRatioForward = "McpSchedRatioForward"
-    McpSchedParForward = "McpSchedParForward"
-    McpSchedRangeForward = "McpSchedRangeForward"
-    McpSchedCapForward = "McpSchedCapForward"
-    McpSchedFloorForward = "McpSchedFloorForward"
-    McpSchedSeagullForward = "McpSchedSeagullForward"
-
     McpFixedRateBond = "McpFixedRateBond"
 
     DgtAssetOrNothingCall = "DgtAssetOrNothingCall"
@@ -431,8 +421,20 @@ _VP_RANGE_IN_FORMULA = re.compile(
 )
 
 
+def _excel_is_opening():
+    """打开期门控：UDF 计算线程禁止 xl_app/COM。"""
+    try:
+        from mcp.utils.excel_open_gate import is_opening
+
+        return is_opening()
+    except Exception:
+        return False
+
+
 def get_vp_range_address_from_caller():
     """从调用格公式解析第一个 VP 区域地址（如 A59:B70）。"""
+    if _excel_is_opening():
+        return None
     try:
         from pyxll import xl_app, xlfCaller
 
@@ -451,7 +453,10 @@ def hydrate_vp_object_fields(vp_array, object_keys=None, kv_range_addr=None):
     """
     PyXLL 以 var[][] 批量传入 VP 时，对象类型单元格常为 None。
     按 KV 行号用 xl_app 重读 B 列（或区域第 2 列）的实际对象。
+    打开期（open gate 武装）禁止 xl_app，直接跳过；打开后全量重算会补水。
     """
+    if _excel_is_opening():
+        return vp_array
     if not vp_array:
         return vp_array
     if object_keys is None:
@@ -524,6 +529,9 @@ def pf_object(val):
             r"^('(?:[^']|'')+'!)?\$?[A-Za-z]{1,3}\$?\d+(:\$?[A-Za-z]{1,3}\$?\d+)?$",
             s,
         ):
+            if _excel_is_opening():
+                # 打开期禁止 xl_app；打开后全量重算会再解析。
+                raise Exception("Invalid object (workbook opening): " + val)
             try:
                 from pyxll import xl_app
 

@@ -6,7 +6,8 @@ Raw Market Data Excel UDF
 参考：EXCEL_INTEGRATION_PITFALLS、curve.py、RAW_MARKET_DATA_JSON_DESIGN.md 14.6–14.7
 
 UDF 命名：rawmd 前缀（Raw Market Data）
-- McpRawMarketManager(root)：单例 Manager，返回 McpRawMarketManager@0
+- McpRawMarketManager(root [, calendar.txt])：单例 Manager，返回 McpRawMarketManager@0
+- rawmdGetCalendar / rawmdCalendarCodes / rawmdHolidaysPath：与 LiveStore 的 mdlsGet* 对称
 - rawmdYieldCurve / rawmdGetYieldCurve、rawmdYieldCurve2 / rawmdGetYieldCurve2、…：
   返回对应 mcp.wrapper.Mcp* 对象（如 McpYieldCurve2@0）；读数用 curve.py 的 YieldCurve2ZeroRate 等。
   估值日可选，省略或空单元格时使用目录下**最新**主索引日（与 C++ getLatestAvailableDate 一致）。
@@ -29,6 +30,7 @@ import sys
 from typing import Any, Dict, List, Optional
 
 from pyxll import xl_arg, xl_func, xl_return
+from mcp.utils.workbook_path import resolve_data_path, resolve_workbook_relative_file
 
 try:
     from mcp_calendar import date_to_string
@@ -77,8 +79,50 @@ except ImportError:
 
 _log = logging.getLogger(__name__)
 
-# Manager 单例缓存：resolved_root -> McpRawMarketManager
-_rawmd_manager_cache: Dict[str, Any] = {}
+# Manager 单例缓存：(root, holidays) -> McpRawMarketManager
+_rawmd_manager_cache: Dict[tuple, Any] = {}
+_HOLIDAYS_SIBLING_NAMES = ("calendar.txt", "Holidays.txt", "Holiday.txt")
+
+
+def _detect_sibling_holidays(directory: str) -> str:
+    if not directory:
+        return ""
+    for name in _HOLIDAYS_SIBLING_NAMES:
+        cand = os.path.normpath(os.path.join(directory, name))
+        if os.path.isfile(cand):
+            return cand
+    return ""
+
+
+def _resolve_holidays_for_rawmd(holidays_file: str, root: str):
+    """显式假日文件优先（相对路径先对工作簿目录）；否则 root 下 calendar.txt / Holidays.txt。"""
+    p = (holidays_file or "").strip()
+    if p:
+        ok, resolved, err = resolve_workbook_relative_file(p, extra_dirs=[root])
+        if ok and resolved:
+            return os.path.normpath(resolved), ""
+        return "", err or ("holidays file not found: %s" % p)
+    return _detect_sibling_holidays(root), ""
+
+
+def _manager_holidays_path(manager) -> str:
+    if manager is None:
+        return ""
+    p = getattr(manager, "_rawmd_holidays_path", None)
+    if p:
+        return str(p)
+    inner = manager.getInstance() if hasattr(manager, "getInstance") else manager
+    if inner is not None:
+        try:
+            hp = inner.holidaysPath()
+            if hp:
+                return str(hp)
+        except Exception:
+            pass
+    root = getattr(manager, "_rawmd_root", None)
+    if root:
+        return _detect_sibling_holidays(str(root))
+    return ""
 
 # getXxx -> RawMarketDataLoader.build_curve 的 curve_type（构建失败时解析原因）
 _CPP_NAME_TO_CURVE_TYPE: Dict[str, str] = {
@@ -315,13 +359,22 @@ def _is_valid_rawmd_directory(root: str) -> tuple:
     return True, ""
 
 
-def _get_or_create_manager(root: str) -> Any:
+def _get_or_create_manager(root: str, holidays_path: str = "") -> Any:
     """优先 C++ MRawMarketManager，fallback Python RawMarketDataManager；均返回 McpRawMarketManager"""
-    if root not in _rawmd_manager_cache:
+    hol_key = (holidays_path or "").replace("\\", "/")
+    cache_key = (os.path.normpath(root), hol_key)
+    if cache_key not in _rawmd_manager_cache:
         _ensure_path()
         try:
             if _has_mcp and _mcp is not None:
                 mgr = _mcp.MRawMarketManager(root)
+                if holidays_path:
+                    hol_cpp = holidays_path.replace("\\", "/")
+                    try:
+                        mgr.setHolidaysPath(hol_cpp)
+                    except Exception:
+                        pass
+                    os.environ["MCP_HOLIDAYS_PATH"] = hol_cpp
                 mgr.setRoot(root)
             else:
                 raise AttributeError("mcp not loaded")
@@ -333,10 +386,16 @@ def _get_or_create_manager(root: str) -> Any:
             w = McpRawMarketManagerWrapper(mgr)
             # 与 rawmdSwapCurve 一致：C++ 构造时已带 root；若 SWIG getRoot() 偶发空，仍可用此字段 + 缓存反查做 Python 兜底
             setattr(w, "_rawmd_root", os.path.normpath(root))
-            _rawmd_manager_cache[root] = w
+            setattr(w, "_rawmd_holidays_path", holidays_path or "")
+            _rawmd_manager_cache[cache_key] = w
         else:
-            _rawmd_manager_cache[root] = mgr
-    return _rawmd_manager_cache[root]
+            try:
+                setattr(mgr, "_rawmd_root", os.path.normpath(root))
+                setattr(mgr, "_rawmd_holidays_path", holidays_path or "")
+            except Exception:
+                pass
+            _rawmd_manager_cache[cache_key] = mgr
+    return _rawmd_manager_cache[cache_key]
 
 
 def _python_rawmd_try(root: str, curve_id: str, vd: str, snake_name: str) -> Optional[Any]:
@@ -369,7 +428,7 @@ def _manager_get_by_cpp_or_snake(
     snake_name: str,
     root: str = "",
 ) -> Optional[Any]:
-    """优先 C++ 风格 getXxx；若返回 None 则用 Python RawMarketDataManager 的 snake_case 兜底。"""
+    """只走 C++ getXxx / snake get*。失败返回 None，不再用 Python RawMarketDataManager 静默再建。"""
     gc = getattr(mgr, cpp_name, None)
     gs = getattr(mgr, snake_name, None)
     attempts = 3 if cpp_name == "getCreditCurve" else 1
@@ -379,14 +438,14 @@ def _manager_get_by_cpp_or_snake(
             out = gc(curve_id, vd)
             if out is not None:
                 return out
-        return _python_rawmd_try(root, curve_id, vd, snake_name)
+        return None
     if callable(gs):
         out = None
         for _ in range(attempts):
             out = gs(curve_id, vd)
             if out is not None:
                 return out
-        return _python_rawmd_try(root, curve_id, vd, snake_name)
+        return None
     return None
 
 
@@ -411,8 +470,8 @@ def _wrap_mcp_if_needed(curve: Any, wrapper_cls: Any, udf_label: str = "") -> An
         if h is None:
             # getHandler() 为 None 时仍调用 Mcp*(None) 会在 slot_tp_init / _mcp.pyd 内崩溃
             return (
-                f"{udf_label}: getHandler() 返回 null，无法构造 Mcp 包装（底层 C++/SWIG 指针缺失）。"
-                f" 曲线对象类型: {type(curve).__name__}"
+                f"{udf_label}: getHandler() returned null; cannot construct the Mcp wrapper (C++/SWIG pointer is missing). "
+                f"Curve object type: {type(curve).__name__}"
             )
         return wrapper_cls(h)
     return curve
@@ -429,11 +488,11 @@ def _rawmd_curve_udfs(
 ):
     """内部：按 Manager 取曲线/曲面并包一层 Mcp*；估值日未指定则用最新主索引日。"""
     if manager is None or isinstance(manager, str):
-        return manager if isinstance(manager, str) else f"{udf_label}: manager 为空"
+        return manager if isinstance(manager, str) else f"{udf_label}: manager is empty"
     try:
         date_str = _resolve_valuation_date_for_curve(manager, valuation_date)
         if not date_str:
-            return f"{udf_label}: 无可用估值日（目录下无 MCP_MARKET_DATA_*.json）"
+            return f"{udf_label}: no available valuation date (no MCP_MARKET_DATA_*.json under the directory)"
         mgr = manager.getInstance() if hasattr(manager, "getInstance") else manager
         root = _resolve_rawmd_root(manager, mgr)
         curve = _manager_get_by_cpp_or_snake(
@@ -451,12 +510,12 @@ def _rawmd_curve_udfs(
                     if detail:
                         return f"Curve build failed: {curve_id} @ {date_str}: {detail}"
                     return (
-                        f"{base} — JSON 中已有该 ID（节与 UDF 一致），但 C++/Python 构建均返回空；"
-                        f"请检查历史行情 CSV、列名与 price_data_index 配置。"
+                        f"{base} — the ID exists in JSON (section matches this UDF), but both C++/Python builds returned empty; "
+                        f"check historical CSV, column names, and price_data_index."
                     )
                 return (
-                    f"{base} — JSON 中该 ID 出现在节: {hint}，与当前 UDF 期望不一致"
-                    f"（例如 FX 曲面请用 rawmdFXVolSurface）。"
+                    f"{base} — this ID appears in JSON section: {hint}, which does not match this UDF "
+                    f"(e.g. use rawmdFXVolSurface for an FX surface)."
                 )
             return base
         return _wrap_mcp_if_needed(curve, wrapper_cls, udf_label)
@@ -620,10 +679,10 @@ def _explain_python_build_failure(
         rdm = RawMarketDataManager(root=root, mcp_module=mcp_mod)
         idx = rdm.load_daily_index(date_str)
         if idx is None:
-            return "无法加载日索引文件"
+            return "failed to load the daily index file"
         j = idx.get_curve_json(curve_id, ct)
         if j is None:
-            return "索引 get_curve_json 无条目（与 list 扫描不一致时请检查大小写/空格）"
+            return "get_curve_json has no entry (if this disagrees with the list scan, check case/spaces)"
         err = rdm._loader.build_curve_explain(ct, j, idx)
         return err or ""
     except Exception as e:
@@ -658,12 +717,14 @@ def _manager_get_available_dates(mgr: Any) -> List[str]:
 # ========== UDF ==========
 
 
-@xl_func(macro=False, recalc_on_open=True)
-@xl_arg("market_data_root", "str", "市场数据根目录，空则用默认")
-def McpRawMarketManager(market_data_root: str = ""):
+@xl_func("str market_data_root, str holidays_file: var", macro=False, recalc_on_open=True)
+@xl_arg("market_data_root", "str", "market data root (blank=default)")
+@xl_arg("holidays_file", "str", "calendar.txt path (blank=root folder)")
+def McpRawMarketManager(market_data_root: str = "", holidays_file: str = ""):
     """
     获取 Raw Market Data Manager（单例）。
-    同一 root 复用同一 Manager。找不到目录时返回错误字符串。
+    同一 root+假日文件 复用同一 Manager。找不到目录时返回错误字符串。
+    holidays_file 留空则用 root 下 calendar.txt / Holidays.txt。
     示例：=McpRawMarketManager() 或 =McpRawMarketManager("D:\\market_data")
     """
     try:
@@ -671,17 +732,88 @@ def McpRawMarketManager(market_data_root: str = ""):
         valid, err = _is_valid_rawmd_directory(root)
         if not valid:
             return err
-        return _get_or_create_manager(root)
+        hol_path, hol_err = _resolve_holidays_for_rawmd(holidays_file, root)
+        if hol_err:
+            return hol_err
+        w = _get_or_create_manager(root, hol_path)
+        if not hol_path:
+            try:
+                inner = w.getInstance() if hasattr(w, "getInstance") else w
+                cpp_hol = inner.holidaysPath()
+                if cpp_hol:
+                    hol_path = os.path.normpath(str(cpp_hol))
+            except Exception:
+                pass
+        if hol_path:
+            try:
+                w._rawmd_holidays_path = hol_path
+            except Exception:
+                pass
+        return w
     except Exception as e:
         s = f"McpRawMarketManager except: {e}"
         _log.warning(s, exc_info=True)
         return s
 
 
+@xl_func("var manager, str code: var", macro=False, recalc_on_open=True)
+@xl_arg("manager", "object", "McpRawMarketManager handle")
+@xl_arg("code", "str", "calendar code e.g. USDMXN")
+def rawmdGetCalendar(manager, code: str = ""):
+    """从 Manager 绑定的假日文件切出日历。例：=rawmdGetCalendar($B$3,\"USDMXN\")"""
+    if manager is None or isinstance(manager, str):
+        return "rawmdGetCalendar: manager is empty"
+    hol = _manager_holidays_path(manager)
+    if not hol:
+        return "rawmdGetCalendar: no holidays file (pass 2nd arg to McpRawMarketManager or put calendar.txt under root)"
+    cc = (code or "").strip()
+    if not cc:
+        return "rawmdGetCalendar: code is empty"
+    try:
+        from pyxll_func.core.mcp_calendar import McpCalendarOf
+
+        return McpCalendarOf(cc, hol)
+    except Exception as e:
+        _log.warning("rawmdGetCalendar: %s", e, exc_info=True)
+        return "rawmdGetCalendar except: %s" % e
+
+
+@xl_func(macro=False, recalc_on_open=True, auto_resize=True)
+@xl_arg("manager", "object", "McpRawMarketManager handle")
+def rawmdCalendarCodes(manager):
+    """返回 Manager 假日文件中的全部 calendar code。"""
+    if manager is None or isinstance(manager, str):
+        return [["rawmdCalendarCodes: manager is empty"]]
+    hol = _manager_holidays_path(manager)
+    if not hol:
+        return [["rawmdCalendarCodes: no holidays file"]]
+    try:
+        from pyxll_func.core.mcp_calendar import McpHolidaysCodes
+
+        codes = McpHolidaysCodes(hol)
+        if codes is None:
+            return [[""]]
+        if isinstance(codes, str):
+            return [[codes]]
+        return [[str(x)] for x in codes]
+    except Exception as e:
+        _log.warning("rawmdCalendarCodes: %s", e, exc_info=True)
+        return [["rawmdCalendarCodes except: %s" % e]]
+
+
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "曲线 ID，如 CNY_ZERO")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用目录下最新主索引日")
+@xl_arg("manager", "object", "McpRawMarketManager handle")
+def rawmdHolidaysPath(manager):
+    """返回 Manager 实际使用的假日文件绝对路径。"""
+    if manager is None or isinstance(manager, str):
+        return "rawmdHolidaysPath: manager is empty"
+    return _manager_holidays_path(manager) or ""
+
+
+@xl_func(macro=False, recalc_on_open=True)
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "curve ID e.g. CNY_ZERO")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date under the directory")
 def rawmdYieldCurve(manager, curve_id: str, valuation_date=None):
     """
     从 Manager 获取收益率曲线，返回 McpYieldCurve（供 Adapter 使用）。
@@ -694,9 +826,9 @@ def rawmdYieldCurve(manager, curve_id: str, valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "双边曲线 ID，如 CNHDEPO_2")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用目录下最新主索引日")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "bilateral curve ID e.g. CNHDEPO_2")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date under the directory")
 def rawmdYieldCurve2(manager, curve_id: str, valuation_date=None):
     """从主索引 YieldCurve2 节获取双边收益率曲线，返回 McpYieldCurve2。"""
     return _rawmd_curve_udfs(
@@ -706,9 +838,9 @@ def rawmdYieldCurve2(manager, curve_id: str, valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "曲线 ID，如 CNY_SWAP_FR007")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "curve ID e.g. CNY_SWAP_FR007")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
 def rawmdSwapCurve(manager, curve_id: str, valuation_date=None):
     """
     从 Manager 获取掉期曲线，返回 McpSwapCurve。
@@ -721,9 +853,9 @@ def rawmdSwapCurve(manager, curve_id: str, valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
 def rawmdBondCurve(manager, curve_id: str, valuation_date=None):
     """返回 McpBondCurve。示例：=rawmdBondCurve(McpRawMarketManager(),\"BOND_CURVE_ID\",A1)"""
     return _rawmd_curve_udfs(
@@ -733,9 +865,9 @@ def rawmdBondCurve(manager, curve_id: str, valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
 def rawmdCreditCurve(manager, curve_id: str, valuation_date=None):
     """返回 McpCreditCurve。"""
     return _rawmd_curve_udfs(
@@ -745,9 +877,9 @@ def rawmdCreditCurve(manager, curve_id: str, valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
 def rawmdBondSpreadCurve(manager, curve_id: str, valuation_date=None):
     """返回 McpBondSpreadCurve（含 setBenchmarkCurve / getBenchmarkCurve，与 C++ BondSpreadCurve 一致）。"""
     return _rawmd_curve_udfs(
@@ -757,8 +889,8 @@ def rawmdBondSpreadCurve(manager, curve_id: str, valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("bond_spread_curve", "object", "McpBondSpreadCurve（如 rawmdBondSpreadCurve 返回值）")
-@xl_arg("benchmark_curve", "object", "McpYieldCurve 新基准曲线")
+@xl_arg("bond_spread_curve", "object", "McpBondSpreadCurve (e.g. rawmdBondSpreadCurve return value)")
+@xl_arg("benchmark_curve", "object", "McpYieldCurve new benchmark curve")
 def rawmdBondSpreadSetBenchmark(bond_spread_curve, benchmark_curve):
     """将利差曲线的基准替换为 benchmark_curve（利率情景/基准冲击）；返回同一 McpBondSpreadCurve 便于链式引用。"""
     if not _has_mcp or bond_spread_curve is None or benchmark_curve is None:
@@ -768,9 +900,9 @@ def rawmdBondSpreadSetBenchmark(bond_spread_curve, benchmark_curve):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
 def rawmdFXForwardPointsCurve(manager, curve_id: str, valuation_date=None):
     """返回 McpFXForwardPointsCurve（对应主索引节 FXForwardPointsCurve）。"""
     return _rawmd_curve_udfs(
@@ -781,9 +913,9 @@ def rawmdFXForwardPointsCurve(manager, curve_id: str, valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "双边 FX 远期点曲线 ID")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "bilateral FX forward-points curve ID")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
 def rawmdFXForwardPointsCurve2(manager, curve_id: str, valuation_date=None):
     """返回 McpFXForwardPointsCurve2（对应主索引节 FXForwardPointsCurve2）。"""
     return _rawmd_curve_udfs(
@@ -794,9 +926,9 @@ def rawmdFXForwardPointsCurve2(manager, curve_id: str, valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
 def rawmdForwardCurve(manager, curve_id: str, valuation_date=None):
     """返回 McpForwardCurve。"""
     return _rawmd_curve_udfs(
@@ -806,9 +938,9 @@ def rawmdForwardCurve(manager, curve_id: str, valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
 def rawmdVolSurface(manager, curve_id: str, valuation_date=None):
     """返回 McpVolSurface。"""
     return _rawmd_curve_udfs(
@@ -818,9 +950,9 @@ def rawmdVolSurface(manager, curve_id: str, valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
 def rawmdFXVolSurface(manager, curve_id: str, valuation_date=None):
     """返回 McpFXVolSurface。"""
     return _rawmd_curve_udfs(
@@ -830,9 +962,9 @@ def rawmdFXVolSurface(manager, curve_id: str, valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "双边 FX 波动率曲面 ID")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "bilateral FX volatility surface ID")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
 def rawmdFXVolSurface2(manager, curve_id: str, valuation_date=None):
     """返回 McpFXVolSurface2（对应主索引节 FXVolSurface2）。"""
     return _rawmd_curve_udfs(
@@ -842,9 +974,9 @@ def rawmdFXVolSurface2(manager, curve_id: str, valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
 def rawmdLocalVol(manager, curve_id: str, valuation_date=None):
     """返回 McpLocalVol。"""
     return _rawmd_curve_udfs(
@@ -854,9 +986,9 @@ def rawmdLocalVol(manager, curve_id: str, valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
 def rawmdHistVol(manager, curve_id: str, valuation_date=None):
     """返回 McpHistVols（主索引节 HistVol）。"""
     return _rawmd_curve_udfs(
@@ -867,11 +999,11 @@ def rawmdHistVol(manager, curve_id: str, valuation_date=None):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager / McpLiveMarketDataStore")
-@xl_arg("product_type", "str", "price_data_index 节名，如 EQUITYSPOT")
-@xl_arg("instrument_code", "str", "标的代码，如 600000.SH")
-@xl_arg("valuation_date", "var", "可选；空则 Raw 用最新主索引日，Live 用快照日")
-@xl_arg("sample_num", "int", "窗口长度，默认 252")
-@xl_arg("model", "str", "CLOSE_TO_CLOSE / EWMA / LINXIAO / RISKMETRICS，默认 EWMA")
+@xl_arg("product_type", "str", "price_data_index section e.g. EQUITYSPOT")
+@xl_arg("instrument_code", "str", "instrument code e.g. 600000.SH")
+@xl_arg("valuation_date", "var", "optional empty: Raw uses latest index date Live uses snapshot date")
+@xl_arg("sample_num", "int", "window length default 252")
+@xl_arg("model", "str", "CLOSE_TO_CLOSE / EWMA / LINXIAO / RISKMETRICS default EWMA")
 def rawmdHistVolFromPriceData(
     manager,
     product_type: str,
@@ -882,11 +1014,11 @@ def rawmdHistVolFromPriceData(
 ):
     """从 HIST CSV 动态构建 McpHistVols，无需 JSON HistVol 节点。"""
     if manager is None or isinstance(manager, str):
-        return manager if isinstance(manager, str) else "rawmdHistVolFromPriceData: manager 为空"
+        return manager if isinstance(manager, str) else "rawmdHistVolFromPriceData: manager is empty"
     pt = (product_type or "").strip()
     code = (instrument_code or "").strip()
     if not pt or not code:
-        return "rawmdHistVolFromPriceData: product_type 或 instrument_code 为空"
+        return "rawmdHistVolFromPriceData: product_type or instrument_code is empty"
     try:
         mgr = manager.getInstance() if hasattr(manager, "getInstance") else manager
         date_str = ""
@@ -933,8 +1065,8 @@ def rawmdHistVolFromPriceData(
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选估值日；空=最新主索引日")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional valuation date empty=latest index date")
 def rawmdGetYieldCurve(manager, curve_id: str, valuation_date=None):
     """返回 McpYieldCurve@n（同 rawmdYieldCurve）。读数：YieldCurveZeroRate(曲线,日期,...)。"""
     return rawmdYieldCurve(manager, curve_id, valuation_date)
@@ -942,8 +1074,8 @@ def rawmdGetYieldCurve(manager, curve_id: str, valuation_date=None):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选估值日；空=最新主索引日")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional valuation date empty=latest index date")
 def rawmdGetYieldCurve2(manager, curve_id: str, valuation_date=None):
     """返回 McpYieldCurve2@n（同 rawmdYieldCurve2）。读数：YieldCurve2ZeroRate(曲线,日期,\"MID\")。"""
     return rawmdYieldCurve2(manager, curve_id, valuation_date)
@@ -951,24 +1083,24 @@ def rawmdGetYieldCurve2(manager, curve_id: str, valuation_date=None):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选估值日")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional valuation date")
 def rawmdGetSwapCurve(manager, curve_id: str, valuation_date=None):
     return rawmdSwapCurve(manager, curve_id, valuation_date)
 
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选估值日")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional valuation date")
 def rawmdGetBondCurve(manager, curve_id: str, valuation_date=None):
     return rawmdBondCurve(manager, curve_id, valuation_date)
 
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选估值日")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional valuation date")
 def rawmdGetCreditCurve(manager, curve_id: str, valuation_date=None):
     """返回 McpCreditCurve@n（同 rawmdCreditCurve）。"""
     return rawmdCreditCurve(manager, curve_id, valuation_date)
@@ -976,8 +1108,8 @@ def rawmdGetCreditCurve(manager, curve_id: str, valuation_date=None):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选估值日")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional valuation date")
 def rawmdGetBondSpreadCurve(manager, curve_id: str, valuation_date=None):
     """返回 McpBondSpreadCurve@n（同 rawmdBondSpreadCurve）。读数：BondSpreadCurveZeroSpread 等。"""
     return rawmdBondSpreadCurve(manager, curve_id, valuation_date)
@@ -985,8 +1117,8 @@ def rawmdGetBondSpreadCurve(manager, curve_id: str, valuation_date=None):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选估值日")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional valuation date")
 def rawmdGetFXForwardPointsCurve(manager, curve_id: str, valuation_date=None):
     """返回 McpFXForwardPointsCurve@n（同 rawmdFXForwardPointsCurve）。读数：FxfpcFXForwardPoints。"""
     return rawmdFXForwardPointsCurve(manager, curve_id, valuation_date)
@@ -994,24 +1126,24 @@ def rawmdGetFXForwardPointsCurve(manager, curve_id: str, valuation_date=None):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选估值日")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional valuation date")
 def rawmdGetFXForwardPointsCurve2(manager, curve_id: str, valuation_date=None):
     return rawmdFXForwardPointsCurve2(manager, curve_id, valuation_date)
 
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选估值日")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional valuation date")
 def rawmdGetFXVolSurface2(manager, curve_id: str, valuation_date=None):
     return rawmdFXVolSurface2(manager, curve_id, valuation_date)
 
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager")
-@xl_arg("curve_id", "str", "曲线 ID，如 EURUSD_LOCALVOL")
-@xl_arg("valuation_date", "var", "可选估值日")
+@xl_arg("curve_id", "str", "curve ID e.g. EURUSD_LOCALVOL")
+@xl_arg("valuation_date", "var", "optional valuation date")
 def rawmdGetLocalVol(manager, curve_id: str, valuation_date=None):
     """返回 McpLocalVol@n（同 rawmdLocalVol）。读数：LocalVolGetVolatility。"""
     return rawmdLocalVol(manager, curve_id, valuation_date)
@@ -1019,8 +1151,8 @@ def rawmdGetLocalVol(manager, curve_id: str, valuation_date=None):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager")
-@xl_arg("curve_id", "str", "曲线 ID，如 EQ_FORWARD")
-@xl_arg("valuation_date", "var", "可选估值日")
+@xl_arg("curve_id", "str", "curve ID e.g. EQ_FORWARD")
+@xl_arg("valuation_date", "var", "optional valuation date")
 def rawmdGetForwardCurve(manager, curve_id: str, valuation_date=None):
     """返回 McpForwardCurve@n（同 rawmdForwardCurve）。读数：ForwardCurveForwardRate。"""
     return rawmdForwardCurve(manager, curve_id, valuation_date)
@@ -1028,8 +1160,8 @@ def rawmdGetForwardCurve(manager, curve_id: str, valuation_date=None):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager")
-@xl_arg("curve_id", "str", "曲线 ID，如 EQ_VOL_SAMPLE")
-@xl_arg("valuation_date", "var", "可选估值日")
+@xl_arg("curve_id", "str", "curve ID e.g. EQ_VOL_SAMPLE")
+@xl_arg("valuation_date", "var", "optional valuation date")
 def rawmdGetVolSurface(manager, curve_id: str, valuation_date=None):
     """返回 McpVolSurface@n（同 rawmdVolSurface）。读数：VolSurfaceGetVolatility。"""
     return rawmdVolSurface(manager, curve_id, valuation_date)
@@ -1037,18 +1169,18 @@ def rawmdGetVolSurface(manager, curve_id: str, valuation_date=None):
 
 @xl_func(macro=False, recalc_on_open=True)
 @xl_arg("manager", "object", "McpRawMarketManager")
-@xl_arg("curve_id", "str", "曲线 ID")
-@xl_arg("valuation_date", "var", "可选估值日")
+@xl_arg("curve_id", "str", "curve ID")
+@xl_arg("valuation_date", "var", "optional valuation date")
 def rawmdGetHistVol(manager, curve_id: str, valuation_date=None):
     """返回 McpHistVols@n（同 rawmdHistVol）。读数：HvsGetVol。"""
     return rawmdHistVol(manager, curve_id, valuation_date)
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("instrument_code", "str", "instrument_code（与 CSV 中 instrument 列一致）")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
-@xl_arg("product_type", "str", "可选；空则按主索引 price_data_index 各节依次尝试（代码通常唯一）")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("instrument_code", "str", "instrument_code (same as the instrument column in the CSV)")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
+@xl_arg("product_type", "str", "optional empty tries each price_data_index section in the main index (codes are usually unique)")
 def rawmdGetPrice(manager, instrument_code: str, valuation_date=None, product_type=None):
     """
     从 price_data_index 配置的 HIST/current CSV 读取价格（与 C++ RawMarketDataManager::getPrice 一致）。
@@ -1056,14 +1188,14 @@ def rawmdGetPrice(manager, instrument_code: str, valuation_date=None, product_ty
     =rawmdGetPrice(McpRawMarketManager(),\"019547\",A1,\"BOND\") 指定日期与类型。
     """
     if manager is None or isinstance(manager, str):
-        return manager if isinstance(manager, str) else "rawmdGetPrice: manager 为空"
+        return manager if isinstance(manager, str) else "rawmdGetPrice: manager is empty"
     code = (instrument_code or "").strip()
     if not code:
-        return "rawmdGetPrice: instrument_code 为空"
+        return "rawmdGetPrice: instrument_code is empty"
     try:
         date_str = _resolve_valuation_date_for_curve(manager, valuation_date)
         if not date_str:
-            return "rawmdGetPrice: 无可用估值日（目录下无 MCP_MARKET_DATA_*.json）"
+            return "rawmdGetPrice: no available valuation date (no MCP_MARKET_DATA_*.json under the directory)"
         mgr = manager.getInstance() if hasattr(manager, "getInstance") else manager
         pt = "" if _is_product_type_empty(product_type) else str(product_type).strip()
         gp = getattr(mgr, "getPrice", None)
@@ -1090,14 +1222,14 @@ def rawmdGetPrice(manager, instrument_code: str, valuation_date=None, product_ty
 
 
 @xl_func(macro=False, recalc_on_open=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
 def rawmdLatestValuationDate(manager):
     """
     返回当前市场数据目录下主索引日期的**最大者**（YYYY-MM-DD），与 C++ getLatestAvailableDate 一致。
     示例：=rawmdLatestValuationDate(McpRawMarketManager())
     """
     if manager is None or isinstance(manager, str):
-        return manager if isinstance(manager, str) else "rawmdLatestValuationDate: manager 为空"
+        return manager if isinstance(manager, str) else "rawmdLatestValuationDate: manager is empty"
     try:
         mgr = manager.getInstance() if hasattr(manager, "getInstance") else manager
         d = _manager_get_latest_available_date_from_mgr(mgr)
@@ -1111,7 +1243,7 @@ def rawmdLatestValuationDate(manager):
 
 
 @xl_func(macro=False, recalc_on_open=True, auto_resize=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
 @xl_return("var[][]")
 def rawmdAvailableDates(manager):
     """
@@ -1119,7 +1251,7 @@ def rawmdAvailableDates(manager):
     示例：=rawmdAvailableDates(McpRawMarketManager())
     """
     if manager is None or isinstance(manager, str):
-        return [[manager if isinstance(manager, str) else "rawmdAvailableDates: manager 为空"]]
+        return [[manager if isinstance(manager, str) else "rawmdAvailableDates: manager is empty"]]
     try:
         mgr = manager.getInstance() if hasattr(manager, "getInstance") else manager
         dates = _manager_get_available_dates(mgr)
@@ -1129,8 +1261,8 @@ def rawmdAvailableDates(manager):
 
 
 @xl_func(macro=False, recalc_on_open=True, auto_resize=True)
-@xl_arg("market_data_root", "str", "Market data root directory, empty for default")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用目录下最新主索引日")
+@xl_arg("market_data_root", "str", "Market data root directory empty for default")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date under the directory")
 @xl_return("var[][]")
 def rawmdMarketDataSnapshot(market_data_root: str = "", valuation_date=None):
     """
@@ -1182,9 +1314,9 @@ def rawmdMarketDataSnapshot(market_data_root: str = "", valuation_date=None):
 
 
 @xl_func(macro=False, recalc_on_open=True, auto_resize=True)
-@xl_arg("manager", "object", "McpRawMarketManager 返回的 Manager")
-@xl_arg("valuation_date", "var", "可选；日期/文本 YYYY-MM-DD/YYYYMMDD 或 Excel 序列；空则使用最新主索引日")
-@xl_arg("sections_csv", "str", "可选；逗号分隔节名，如 FXVolSurface,LocalVol；空则扫描默认关键节")
+@xl_arg("manager", "object", "Manager returned by McpRawMarketManager")
+@xl_arg("valuation_date", "var", "optional date / YYYY-MM-DD / YYYYMMDD / Excel serial empty uses latest index date")
+@xl_arg("sections_csv", "str", "optional comma-separated sections e.g. FXVolSurface LocalVol empty scans default key sections")
 @xl_return("var[][]")
 def rawmdMissingDependencies(manager, valuation_date=None, sections_csv: str = ""):
     """
@@ -1195,11 +1327,11 @@ def rawmdMissingDependencies(manager, valuation_date=None, sections_csv: str = "
     - =rawmdMissingDependencies(McpRawMarketManager(),A1,"CreditCurve,FXVolSurface,LocalVol")
     """
     if manager is None or isinstance(manager, str):
-        return [[manager if isinstance(manager, str) else "rawmdMissingDependencies: manager 为空"]]
+        return [[manager if isinstance(manager, str) else "rawmdMissingDependencies: manager is empty"]]
     try:
         date_str = _resolve_valuation_date_for_curve(manager, valuation_date)
         if not date_str:
-            return [["rawmdMissingDependencies: 无可用估值日（目录下无 MCP_MARKET_DATA_*.json）"]]
+            return [["rawmdMissingDependencies: no available valuation date (no MCP_MARKET_DATA_*.json under the directory)"]]
 
         sections: Optional[List[str]] = None
         s = (sections_csv or "").strip()

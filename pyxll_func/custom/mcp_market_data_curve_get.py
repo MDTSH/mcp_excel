@@ -82,6 +82,10 @@ def market_data_source_get_curve(
     getter_name, wrapper_cls = spec
     label = f"{udf_prefix}{curve_kind}"
 
+    if isinstance(source, str):
+        return (
+            f"{label}: store is not ready or object cache expired; recalculate McpLiveMarketDataStore first"
+        )
     inner = _unwrap_mcp_source(source)
     if inner is None:
         return f"{label}: source is empty"

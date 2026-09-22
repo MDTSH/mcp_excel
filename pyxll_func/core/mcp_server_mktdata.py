@@ -648,7 +648,7 @@ def _get_ric_data(ric, DataServer="http://172.20.0.70:8803"):
         如果获取失败，抛出异常
     """
     if not ric:
-        raise ValueError(f"RIC 参数不能为空: {ric}")
+        raise ValueError(f"RIC cannot be empty: {ric}")
     
     # 准备请求参数
     params = {"ricname": ric}
@@ -659,7 +659,7 @@ def _get_ric_data(ric, DataServer="http://172.20.0.70:8803"):
     # 检查返回的 Code
     if dataMap.get("Code") != "0000":
         error_msg = dataMap.get("Msg", "获取数据失败")
-        raise Exception(f"接口返回错误 (RIC: {ric}): {error_msg}")
+        raise Exception(f"API returned an error (RIC: {ric}): {error_msg}")
     
     # 获取数据
     data = dataMap.get("Data", {})
@@ -669,14 +669,14 @@ def _get_ric_data(ric, DataServer="http://172.20.0.70:8803"):
     bid_str = data.get("bID") or data.get("BID") or data.get("bid")
     
     if ask_str is None or bid_str is None:
-        raise ValueError(f"返回数据中缺少 ASK 或 BID 字段 (RIC: {ric})")
+        raise ValueError(f"response is missing ASK or BID (RIC: {ric})")
     
     # 转换为浮点数
     try:
         ask_value = float(ask_str)
         bid_value = float(bid_str)
     except (ValueError, TypeError) as e:
-        raise ValueError(f"无法将 ASK 或 BID 转换为数字 (RIC: {ric}): {e}")
+        raise ValueError(f"cannot convert ASK or BID to a number (RIC: {ric}): {e}")
     
     return ask_value, bid_value
 
@@ -735,12 +735,12 @@ def RtGet1(ric, field=None):
             # 尝试转换为字符串
             ric_str = str(ric).strip()
             if not ric_str:
-                raise ValueError("ric 参数不能为空")
+                raise ValueError("RIC cannot be empty")
             ric_list = [ric_str]
             is_single = True
         
         if not ric_list:
-            raise ValueError("ric 参数列表为空")
+            raise ValueError("RIC list is empty")
         
         # 批量获取数据
         results = []
@@ -779,7 +779,7 @@ def RtGet1(ric, field=None):
                         else:
                             results.append([ric_item, mid_value])
                     else:
-                        raise ValueError(f"不支持的 field 值: {field}。支持的值: ASK, BID, MID")
+                        raise ValueError(f"unsupported field value: {field}. Supported values: ASK, BID, MID")
             
             except Exception as e:
                 error_msg = f"{ric_item}: {str(e)}"
@@ -794,9 +794,9 @@ def RtGet1(ric, field=None):
         if not is_single:
             if not results:
                 if errors:
-                    return [["错误"], [f"所有 RIC 获取失败: {'; '.join(errors)}"]]
+                    return [["Error"], [f"all RIC lookups failed: {'; '.join(errors)}"]]
                 else:
-                    return [["错误"], ["没有有效数据"]]
+                    return [["Error"], ["no valid data"]]
             
             # 构建表头
             if field is None or field == "":

@@ -6080,11 +6080,63 @@ _RC_SET_MAP = {
     "fixeddaycount": ("setFixedDayCount", "const:DayCounter"),
     "floatdaycounter": ("setFloatDayCount", "const:DayCounter"),
     "floatdaycount": ("setFloatDayCount", "const:DayCounter"),
+    "fixedpaymentdaycount": ("setFixedPaymentDayCount", "const:DayCounter"),
+    "fixedpaymentdaycounter": ("setFixedPaymentDayCount", "const:DayCounter"),
+    "fixedresetdaycount": ("setFixedResetDayCount", "const:DayCounter"),
+    "fixedresetdaycounter": ("setFixedResetDayCount", "const:DayCounter"),
+    "floatpaymentdaycount": ("setFloatPaymentDayCount", "const:DayCounter"),
+    "floatpaymentdaycounter": ("setFloatPaymentDayCount", "const:DayCounter"),
+    "floatresetdaycount": ("setFloatResetDayCount", "const:DayCounter"),
+    "floatresetdaycounter": ("setFloatResetDayCount", "const:DayCounter"),
+    "fixingdaycounter": ("setFixingDayCounter", "const:DayCounter"),
+    "fixedcompounding": ("setFixedCompounding", "bool"),
+    "fixedcompoundingfrequency": ("setFixedCompoundingFrequency", "const:Frequency"),
+    "floatcompounding": ("setFloatCompounding", "bool"),
+    "floatcompoundingfrequency": ("setFloatCompoundingFrequency", "const:Frequency"),
+    "forwardratecompounding": ("setForwardRateCompounding", "bool"),
+    "forwardratecompoundingfrequency": ("setForwardRateCompoundingFrequency", "const:Frequency"),
     "fixingfrequency": ("setFixingFrequency", "const:Frequency"),
     "fixingdateadjuster": ("setFixingDateAdjuster", "const:DateAdjusterRule"),
+    "fixingmethod": ("setFixingMethod", "const:ResetRateMethod"),
     "fixedpaymentlag": ("setFixedPaymentLag", "int"),
     "floatpaymentlag": ("setFloatPaymentLag", "int"),
 }
+_RC_INDEX_KEYS = {
+    "fixingindexname": "name",
+    "fixingindextenor": "tenor",
+    "floattenor": "tenor",
+}
+
+
+def _rc_current_fixing_index(rc):
+    """Read current fixing index name/tenor from an existing RateConvention."""
+    name, tenor = "", "1D"
+    raw = ""
+    for getter in ("toStructJson", "toStruct"):
+        if hasattr(rc, getter):
+            try:
+                raw = getattr(rc, getter)() or ""
+            except Exception:
+                raw = ""
+            if raw:
+                break
+    for part in str(raw).split(";"):
+        if "=" not in part:
+            continue
+        key, val = part.split("=", 1)
+        key, val = key.strip(), val.strip()
+        if key == "fixingIndexName" and val:
+            name = val
+        elif key == "fixingIndexTenor" and val:
+            tenor = val
+    if hasattr(rc, "floatTenor"):
+        try:
+            cur = rc.floatTenor()
+            if cur:
+                tenor = cur
+        except Exception:
+            pass
+    return name, tenor
 
 
 def _rate_convention_create(*args, key=""):
@@ -6145,9 +6197,18 @@ def _rate_convention_create(*args, key=""):
             import logging
             logging.warning(f"McpRateConvention setName({name}): {ex}")
     # Apply set methods (skip ConventionName, BaseConvention)
+    idx_name, idx_tenor = None, None
     for k, v in d.items():
         k_lower = str(k).lower().strip()
         if k_lower in ("conventionname", "baseconvention"):
+            continue
+        if k_lower in _RC_INDEX_KEYS:
+            part = str(v).strip() if v is not None else ""
+            if part:
+                if _RC_INDEX_KEYS[k_lower] == "name":
+                    idx_name = part
+                else:
+                    idx_tenor = part
             continue
         if k_lower not in _RC_SET_MAP:
             continue
@@ -6168,6 +6229,16 @@ def _rate_convention_create(*args, key=""):
         except Exception as ex:
             import logging
             logging.warning(f"McpRateConvention set {k}={v}: {ex}")
+    if idx_name is not None or idx_tenor is not None:
+        cur_name, cur_tenor = _rc_current_fixing_index(rc)
+        try:
+            rc.setFixingIndex(
+                idx_name if idx_name is not None else cur_name,
+                idx_tenor if idx_tenor is not None else cur_tenor,
+            )
+        except Exception as ex:
+            import logging
+            logging.warning(f"McpRateConvention setFixingIndex({idx_name},{idx_tenor}): {ex}")
     return rc
 
 

@@ -1271,25 +1271,25 @@ def TrsPrice(trs, discountCurve, fundingCurve):
 def TrsAdapterNPV(adapter):
     """TRS Adapter 估值（NPV），需已设置 DiscountCurve、FundingCurve、UnderlyingPrice"""
     if adapter is None:
-        return "#TRS: adapter 为空"
+        return "#TRS: adapter is empty"
     if isinstance(adapter, str) and ('except' in adapter or 'Missing' in adapter or 'vector too long' in adapter):
-        return f"#TRS: adapter 创建失败，请检查 McpTRSAdapter 参数区域是否包含 TotalReturnSwap、DiscountCurve、FundingCurve、UnderlyingPrice"
+        return f"#TRS: failed to create adapter; check that the McpTRSAdapter range contains TotalReturnSwap, DiscountCurve, FundingCurve, UnderlyingPrice"
     if not hasattr(adapter, 'calculateValuationMetrics'):
-        return "#TRS: 无效的 adapter 对象"
+        return "#TRS: invalid adapter object"
     try:
         val = adapter.calculateValuationMetrics()
         if val and len(val) > 0:
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-            return "#TRS: 无结果(value 为空)"
-        return "#TRS: 无结果。请确保 McpTRSAdapter 已设置 DiscountCurve、FundingCurve、UnderlyingPrice"
+            return "#TRS: no result (value is empty)"
+        return "#TRS: no result. Ensure McpTRSAdapter has DiscountCurve, FundingCurve, UnderlyingPrice"
     except RuntimeError as e:
         err = str(e).lower()
         if 'bad allocation' in err or 'allocation' in err:
-            return "#TRS: 估值失败(bad allocation)。请确保：1) 已设置 DiscountCurve、FundingCurve、UnderlyingPrice；2) 曲线与 TRS 在同一工作簿且未被删除；3) 日期格式正确(YYYY-MM-DD)"
+            return "#TRS: valuation failed (bad allocation). Ensure: 1) DiscountCurve, FundingCurve, UnderlyingPrice are set; 2) curves and TRS are in the same workbook and not deleted; 3) dates use YYYY-MM-DD"
         if 'vector too long' in err:
-            return "#TRS: 估值失败(vector too long)"
+            return "#TRS: valuation failed (vector too long)"
         return f"#TRS: {e}"
     except Exception as e:
         return f"#TRS: {e}"
@@ -1310,11 +1310,11 @@ def TRSAdapterPV(adapter):
         PV 数值（本币），或错误信息
     """
     if adapter is None:
-        return "#TRS: adapter 为空"
+        return "#TRS: adapter is empty"
     if isinstance(adapter, str):
-        return f"#TRS: adapter 创建失败 → {adapter}"
+        return f"#TRS: failed to create adapter → {adapter}"
     if not hasattr(adapter, 'calculateValuationMetrics'):
-        return "#TRS: 无效的 adapter 对象"
+        return "#TRS: invalid adapter object"
     try:
         val = adapter.calculateValuationMetrics()
         for m in (val or []):
@@ -1326,7 +1326,7 @@ def TRSAdapterPV(adapter):
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-        return "#TRS: 无 PV 结果。请确保 McpTRSAdapter 已设置 DiscountCurve、FundingCurve、UnderlyingPrice"
+        return "#TRS: no PV result. Ensure McpTRSAdapter has DiscountCurve, FundingCurve, UnderlyingPrice"
     except Exception as e:
         return f"#TRS: {e}"
 
@@ -1347,18 +1347,18 @@ def TRSAdapterImpliedPrice(adapter):
         隐含价格比率（PV / Notional），或错误信息
     """
     if adapter is None:
-        return "#TRS: adapter 为空"
+        return "#TRS: adapter is empty"
     if isinstance(adapter, str):
-        return f"#TRS: adapter 创建失败 → {adapter}"
+        return f"#TRS: failed to create adapter → {adapter}"
     if not hasattr(adapter, 'calculateValuationMetrics'):
-        return "#TRS: 无效的 adapter 对象"
+        return "#TRS: invalid adapter object"
     try:
         val = adapter.calculateValuationMetrics()
         for m in (val or []):
             nm = getattr(m, 'metric_name', None) or ''
             if str(nm) == 'IMPLIED_PRICE':
                 return float(getattr(m, 'value', 0))
-        return "#TRS: 无 IMPLIED_PRICE 结果。请确认 mcp 模块已重新编译（新增 IMPLIED_PRICE 指标）"
+        return "#TRS: no IMPLIED_PRICE result. Rebuild the mcp module (IMPLIED_PRICE metric was added)"
     except Exception as e:
         return f"#TRS: {e}"
 
@@ -1379,13 +1379,13 @@ def TrsImpliedPrice(trs, discountCurve, fundingCurve):
         隐含价格比率（PV / Notional），如 0.002 表示每单位本金盈亏 0.2%
     """
     if trs is None:
-        return "#TRS: trs 对象为空"
+        return "#TRS: trs object is empty"
     if discountCurve is None:
-        return "#TRS: discountCurve 为空"
+        return "#TRS: discountCurve is empty"
     if fundingCurve is None:
-        return "#TRS: fundingCurve 为空"
+        return "#TRS: fundingCurve is empty"
     if not hasattr(trs, 'getImpliedPrice'):
-        return "#TRS: 对象不支持 getImpliedPrice，请重新编译 mcp 模块"
+        return "#TRS: object does not support getImpliedPrice，please rebuild the mcp module"
     try:
         disc_arg = discountCurve.getHandler() if hasattr(discountCurve, 'getHandler') else discountCurve
         fund_arg = fundingCurve.getHandler() if hasattr(fundingCurve, 'getHandler') else fundingCurve
@@ -1413,12 +1413,12 @@ def TrsMarketParRate(trs, discountCurve=None, fundingCurve=None):
         与 VanillaSwap.MarketParRate 同口径：不带 direction，是投资人「今天再签同样合约」的市场报价。
     """
     if trs is None:
-        return "#TRS: trs 对象为空"
+        return "#TRS: trs object is empty"
     is_adapter = hasattr(trs, '_trs_ref') or hasattr(trs, 'calculateValuationMetrics')
     if not is_adapter and discountCurve is None:
-        return "#TRS: discountCurve 为空（传入 raw TRS 时必须提供折现曲线）"
+        return "#TRS: discountCurve is empty (a discount curve is required when passing a raw TRS)"
     if not hasattr(trs, 'MarketParRate'):
-        return "#TRS: 对象不支持 MarketParRate，请重新编译 mcp 模块"
+        return "#TRS: object does not support MarketParRate，please rebuild the mcp module"
     try:
         disc_arg = discountCurve.getHandler() if hasattr(discountCurve, 'getHandler') else discountCurve
         fund_arg = fundingCurve.getHandler() if hasattr(fundingCurve, 'getHandler') else fundingCurve
@@ -1438,11 +1438,11 @@ def TrsAdapterCashflows(adapter, useYieldCurve=True, fields=None):
     不使用 volatile：volatile 会在每次全表重算时强制重算，修改到期日等易触发 Excel 长时间卡死。
     请在公式中用 +0*ROW(曲线单元格) 等方式建立对曲线/注入单元格的依赖，保证计算顺序。"""
     if adapter is None:
-        return [["#TRS: adapter 为空"]]
+        return [["#TRS: adapter is empty"]]
     if isinstance(adapter, str) and ('except' in adapter or 'Missing' in adapter or 'vector too long' in adapter):
-        return [["#TRS: adapter 创建失败，请检查 McpTRSAdapter 参数区域"]]
+        return [["#TRS: failed to create adapter; check the McpTRSAdapter parameter range"]]
     if not hasattr(adapter, 'calculateCashflows'):
-        return [["#TRS: 无效的 adapter 对象"]]
+        return [["#TRS: invalid adapter object"]]
     try:
         dc = getattr(adapter, "_discount_curve_ref", None)
         fc = getattr(adapter, "_funding_curve_ref", None)
@@ -1548,19 +1548,19 @@ def TrsAdapterCashflows(adapter, useYieldCurve=True, fields=None):
                             obj.append(v if v is not None else "")
                         result.append(obj)
                     return result
-                return [["#TRS: 无现金流数据"]]
+                return [["#TRS: no cashflow data"]]
             except (TypeError, AttributeError) as te:
-                return [[f"#TRS: 现金流解析失败: {te}"]]
+                return [[f"#TRS: cashflow parse failed: {te}"]]
     except RuntimeError as e:
         err = str(e).lower()
         if 'bad allocation' in err or 'allocation' in err:
-            return [["#TRS: 现金流计算失败(bad allocation)。请确保：1) 已设置 DiscountCurve、FundingCurve、UnderlyingPrice；2) 曲线与 TRS 在同一工作簿且未被删除；3) 日期格式正确(YYYY-MM-DD)"]]
+            return [["#TRS: cashflow failed (bad allocation). Ensure: 1) DiscountCurve, FundingCurve, UnderlyingPrice are set; 2) curves and TRS are in the same workbook and not deleted; 3) dates use YYYY-MM-DD"]]
         if 'vector too long' in err:
-            return [["#TRS: 现金流结果过长，无法输出到 Excel"]]
+            return [["#TRS: cashflow result is too long to write to Excel"]]
         return [[f"#TRS: {e}"]]
     except Exception as e:
         return [[f"#TRS: {e}"]]
-    return [["#TRS: 无现金流数据"]]
+    return [["#TRS: no cashflow data"]]
 
 
 @xl_func(macro=False, recalc_on_open=True)
@@ -1570,13 +1570,13 @@ def TrsAdapterCashflows(adapter, useYieldCurve=True, fields=None):
 def TrsSetFundingLegType(trs, legType, fixedRate=0.0):
     """设置 TRS 资金腿类型：legType='FIXED' 或 'FLOATING'（默认），fixedRate 为小数（如 0.052 表示 5.2%）"""
     if trs is None:
-        return "#TRS: trs 为空"
+        return "#TRS: trs is empty"
     try:
         leg_int = 1 if str(legType).strip().upper() == "FIXED" else 0
         if hasattr(trs, 'setFundingLegType'):
             trs.setFundingLegType(leg_int, float(fixedRate))
             return f"OK: FundingLegType={legType}, Rate={fixedRate}"
-        return "#TRS: 对象不支持 setFundingLegType"
+        return "#TRS: object does not support setFundingLegType"
     except Exception as e:
         return f"#TRS: {e}"
 
@@ -1634,15 +1634,15 @@ def BondTrsSetDiscountCurve(adapter, curve):
         "OK" 或错误信息
     """
     if adapter is None:
-        return "#BondTRS: adapter 为空"
+        return "#BondTRS: adapter is empty"
     if curve is None:
-        return "#BondTRS: curve 为空"
+        return "#BondTRS: curve is empty"
     try:
         if hasattr(adapter, 'setDiscountCurve'):
             adapter.setDiscountCurve(curve)
             setattr(adapter, "_mcp_bond_trs_discount_curve", curve)
             return "OK"
-        return "#BondTRS: adapter 不支持 setDiscountCurve"
+        return "#BondTRS: adapter does not support setDiscountCurve"
     except Exception as e:
         return f"#BondTRS: {e}"
 
@@ -1661,14 +1661,14 @@ def BondTrsSetFundingCurve(adapter, curve):
         "OK" 或错误信息
     """
     if adapter is None:
-        return "#BondTRS: adapter 为空"
+        return "#BondTRS: adapter is empty"
     if curve is None:
-        return "#BondTRS: curve 为空"
+        return "#BondTRS: curve is empty"
     try:
         if hasattr(adapter, 'setFundingCurve'):
             adapter.setFundingCurve(curve)
             return "OK"
-        return "#BondTRS: adapter 不支持 setFundingCurve"
+        return "#BondTRS: adapter does not support setFundingCurve"
     except Exception as e:
         return f"#BondTRS: {e}"
 
@@ -1687,13 +1687,13 @@ def BondTrsSetCurrentPrice(adapter, currentCleanPrice):
         "OK" 或错误信息
     """
     if adapter is None:
-        return "#BondTRS: adapter 为空"
+        return "#BondTRS: adapter is empty"
     try:
         if hasattr(adapter, 'setCurrentCleanPrice'):
             adapter.setCurrentCleanPrice(float(currentCleanPrice))
             setattr(adapter, "_mcp_bond_trs_current_clean", float(currentCleanPrice))
             return f"OK: CurrentCleanPrice={currentCleanPrice}"
-        return "#BondTRS: adapter 不支持 setCurrentCleanPrice"
+        return "#BondTRS: adapter does not support setCurrentCleanPrice"
     except Exception as e:
         return f"#BondTRS: {e}"
 
@@ -1707,7 +1707,7 @@ def BondTrsSetValuationDate(adapter, valuationDate):
     估值日影响：(1) 只剩余票息计入；(2) 累计利息按估值日重算。
     """
     if adapter is None:
-        return "#BondTRS: adapter 为空"
+        return "#BondTRS: adapter is empty"
     try:
         from mcp.utils.excel_utils import pf_date
         d = pf_date(valuationDate)
@@ -1715,7 +1715,7 @@ def BondTrsSetValuationDate(adapter, valuationDate):
             adapter.setValuationDate(d)
             setattr(adapter, "_mcp_bond_trs_valuation_date", d)
             return f"OK: ValuationDate={d}"
-        return "#BondTRS: adapter 不支持 setValuationDate"
+        return "#BondTRS: adapter does not support setValuationDate"
     except Exception as e:
         return f"#BondTRS: {e}"
 
@@ -1751,11 +1751,11 @@ def BondTrsNPV(adapter):
         NPV 数值（本币），或错误信息
     """
     if adapter is None:
-        return "#BondTRS: adapter 为空"
+        return "#BondTRS: adapter is empty"
     if isinstance(adapter, str):
-        return f"#BondTRS: adapter 创建失败 → {adapter}"
+        return f"#BondTRS: failed to create adapter → {adapter}"
     if not hasattr(adapter, 'calculateValuationMetrics'):
-        return "#BondTRS: 无效的 adapter 对象"
+        return "#BondTRS: invalid adapter object"
     try:
         _bond_trs_sync_adapter(adapter)
         val = adapter.calculateValuationMetrics()
@@ -1763,7 +1763,7 @@ def BondTrsNPV(adapter):
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-        return "#BondTRS: 无估值结果（请检查 DiscountCurve / CurrentPrice 是否已填入参数块）"
+        return "#BondTRS: no valuation result (check that DiscountCurve / CurrentPrice are filled in the parameter block)"
     except Exception as e:
         return f"#BondTRS: {e}"
 
@@ -1783,11 +1783,11 @@ def BondTRSAdapterPV(adapter):
         PV 数值（本币），或错误信息
     """
     if adapter is None:
-        return "#BondTRS: adapter 为空"
+        return "#BondTRS: adapter is empty"
     if isinstance(adapter, str):
-        return f"#BondTRS: adapter 创建失败 → {adapter}"
+        return f"#BondTRS: failed to create adapter → {adapter}"
     if not hasattr(adapter, 'calculateValuationMetrics'):
-        return "#BondTRS: 无效的 adapter 对象"
+        return "#BondTRS: invalid adapter object"
     try:
         _bond_trs_sync_adapter(adapter)
         val = adapter.calculateValuationMetrics()
@@ -1799,7 +1799,7 @@ def BondTRSAdapterPV(adapter):
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-        return "#BondTRS: 无 PV 结果（请检查 DiscountCurve / CurrentPrice 是否已填入参数块）"
+        return "#BondTRS: no PV result (check that DiscountCurve / CurrentPrice are filled in the parameter block)"
     except Exception as e:
         return f"#BondTRS: {e}"
 
@@ -1823,18 +1823,18 @@ def BondTRSAdapterImpliedPrice(adapter):
         每百元面值的隐含价格点数，或错误信息
     """
     if adapter is None:
-        return "#BondTRS: adapter 为空"
+        return "#BondTRS: adapter is empty"
     if isinstance(adapter, str):
-        return f"#BondTRS: adapter 创建失败 → {adapter}"
+        return f"#BondTRS: failed to create adapter → {adapter}"
     if not hasattr(adapter, 'calculateValuationMetrics'):
-        return "#BondTRS: 无效的 adapter 对象"
+        return "#BondTRS: invalid adapter object"
     try:
         val = adapter.calculateValuationMetrics()
         for m in (val or []):
             nm = getattr(m, 'metric_name', None) or ''
             if str(nm) == 'IMPLIED_PRICE':
                 return float(getattr(m, 'value', 0))
-        return "#BondTRS: 无 IMPLIED_PRICE 结果。请确认 mcp 模块已重新编译（新增 IMPLIED_PRICE 指标）"
+        return "#BondTRS: no IMPLIED_PRICE result. Rebuild the mcp module (IMPLIED_PRICE metric was added)"
     except Exception as e:
         return f"#BondTRS: {e}"
 
@@ -1854,11 +1854,11 @@ def BondTrsImpliedPrice(trs, discountCurve):
         注：此值反映 TRS 合约本身 NPV 与面值之比，不同于债券市场全价（MARKET_PRICE）
     """
     if trs is None:
-        return "#BondTRS: trs 对象为空"
+        return "#BondTRS: trs object is empty"
     if discountCurve is None:
-        return "#BondTRS: discountCurve 为空"
+        return "#BondTRS: discountCurve is empty"
     if not hasattr(trs, 'getImpliedPrice'):
-        return "#BondTRS: 对象不支持 getImpliedPrice，请重新编译 mcp 模块"
+        return "#BondTRS: object does not support getImpliedPrice，please rebuild the mcp module"
     try:
         disc_arg = discountCurve.getHandler() if hasattr(discountCurve, 'getHandler') else discountCurve
         return trs.getImpliedPrice(disc_arg)
@@ -1885,12 +1885,12 @@ def BondTrsMarketParRate(trs, discountCurve=None):
         含义：投资人在当前估值日、当前净价下，再签一笔同期限同标的同结构 TRS 的合理融资费率报价。
     """
     if trs is None:
-        return "#BondTRS: trs 对象为空"
+        return "#BondTRS: trs object is empty"
     is_adapter = hasattr(trs, '_bond_trs_ref') or hasattr(trs, 'calculateValuationMetrics')
     if not is_adapter and discountCurve is None:
-        return "#BondTRS: discountCurve 为空（传入 raw MBondTRS 时必须提供折现曲线）"
+        return "#BondTRS: discountCurve is empty (a discount curve is required when passing a raw MBondTRS)"
     if not hasattr(trs, 'MarketParRate'):
-        return "#BondTRS: 对象不支持 MarketParRate，请重新编译 mcp 模块"
+        return "#BondTRS: object does not support MarketParRate，please rebuild the mcp module"
     try:
         # McpBondCurve/McpSwapCurve 不继承 MYieldCurve，SWIG void* 重载会导致崩溃；
         # 用 getHandler() 提取底层 mcp::*Curve* 指针（继承自 mcp::YieldCurve，safe）
@@ -1922,9 +1922,9 @@ def BondTrsAdapterCashflows(adapter, useYieldCurve=True, discountCurve=None, fie
         =BondTrsAdapterCashflows(B56, TRUE)      — 向后兼容旧公式，同上
         =BondTrsAdapterCashflows(B56, TRUE, B38) — 显式传入折现曲线（推荐），避免 DF=1"""
     if adapter is None:
-        return [["#BondTRS: adapter 为空"]]
+        return [["#BondTRS: adapter is empty"]]
     if not hasattr(adapter, 'calculateCashflows'):
-        return [["#BondTRS: 无效的 adapter 对象"]]
+        return [["#BondTRS: invalid adapter object"]]
     try:
         # 若显式传入 discountCurve，先更新 adapter 上存储的曲线引用，再统一 sync
         if discountCurve is not None:
@@ -1969,7 +1969,7 @@ def BondTrsAdapterCashflows(adapter, useYieldCurve=True, discountCurve=None, fie
                     obj.append(row.get(field, ""))
                 result.append(obj)
             return result
-        return [["#BondTRS: 无现金流数据"]]
+        return [["#BondTRS: no cashflow data"]]
     except Exception as e:
         return [[f"#BondTRS: {e}"]]
 
@@ -1985,12 +1985,12 @@ def _get_cds_adapter_obj(adapter):
 
 def _check_cds_adapter(adapter, prefix="#CDS"):
     if adapter is None:
-        return f"{prefix}: adapter 为空"
+        return f"{prefix}: adapter is empty"
     if isinstance(adapter, str):
         if any(x in adapter for x in ('except', 'Missing', 'Error', 'ObjectCacheKeyError', 'McpCdsAdapter')):
-            return f"{prefix}: adapter 创建失败或对象缓存无效，请检查 McpCdsAdapter 参数区域或重新计算"
+            return f"{prefix}: failed to create adapter or object cache is invalid; check the McpCdsAdapter parameter range or recalculate"
     if not hasattr(adapter, 'calculateValuationMetrics'):
-        return f"{prefix}: 无效的 adapter 对象"
+        return f"{prefix}: invalid adapter object"
     return None
 
 
@@ -2003,7 +2003,7 @@ def _check_cds_npv_ready(adapter):
     except Exception as e:
         err_str = str(e)
         if "internal legs not initialized" in err_str.lower() or "legs not initialized" in err_str.lower():
-            return "#CDS: CDS 内部 legs 未初始化。请检查 McpCreditDefaultSwap 参数：TradeDate/MaturityDate/ValuationDate 有效，ValuationDate <= MaturityDate，且 CDS 构造成功"
+            return "#CDS: CDS legs are not initialized. Check McpCreditDefaultSwap: TradeDate/MaturityDate/ValuationDate are valid, ValuationDate <= MaturityDate, and CDS was constructed successfully"
         return f"#CDS: {e}"
 
 
@@ -2032,9 +2032,9 @@ def CdsAdapterNPV(adapter):
     try:
         # 尽早防御：adapter 为 None 或异常类型时直接返回
         if adapter is None:
-            return "#CDS: adapter 为空"
+            return "#CDS: adapter is empty"
         if isinstance(adapter, str):
-            return f"#CDS: adapter 创建失败或对象缓存无效，请检查 McpCdsAdapter 参数区域或重新计算"
+            return f"#CDS: failed to create adapter or object cache is invalid; check the McpCdsAdapter parameter range or recalculate"
         err = _check_cds_adapter(adapter)
         if err:
             return err
@@ -2044,16 +2044,16 @@ def CdsAdapterNPV(adapter):
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-            return "#CDS: 无结果(value 为空)"
-        return "#CDS: 无结果。请确保已设置 CreditCurve、YieldCurve、Notional、Currency"
+            return "#CDS: no result (value is empty)"
+        return "#CDS: no result. Ensure CreditCurve, YieldCurve, Notional, Currency are set"
     except BaseException as e:
         if 'ObjectCacheKeyError' in type(e).__name__ or 'ObjectCacheKey' in str(e):
-            return "#CDS: adapter 对象缓存无效，请检查 McpCdsAdapter 参数区域或重新计算"
+            return "#CDS: adapter object cache is invalid; check the McpCdsAdapter parameter range or recalculate"
         err_str = str(e).lower()
         if "internal legs not initialized" in err_str or "legs not initialized" in err_str:
-            return "#CDS: CDS 内部 legs 未初始化。请检查 McpCreditDefaultSwap：TradeDate/MaturityDate/ValuationDate 为有效日期(YYYY-MM-DD)，ValuationDate<=MaturityDate"
+            return "#CDS: CDS legs are not initialized. Check McpCreditDefaultSwap: TradeDate/MaturityDate/ValuationDate are valid dates (YYYY-MM-DD), ValuationDate<=MaturityDate"
         if "valuation date" in err_str and "maturity" in err_str:
-            return "#CDS: ValuationDate 不能晚于 MaturityDate，请检查 McpCreditDefaultSwap 日期参数"
+            return "#CDS: ValuationDate cannot be later than MaturityDate; check McpCreditDefaultSwap date parameters"
         return f"#CDS: {e}"
 
 
@@ -2065,9 +2065,9 @@ def CdsAdapterCS01(adapter):
     """
     try:
         if adapter is None:
-            return "#CDS: adapter 为空"
+            return "#CDS: adapter is empty"
         if isinstance(adapter, str):
-            return "#CDS: adapter 创建失败或对象缓存无效，请检查 McpCdsAdapter 参数区域或重新计算"
+            return "#CDS: failed to create adapter or object cache is invalid; check the McpCdsAdapter parameter range or recalculate"
         err = _check_cds_adapter(adapter)
         if err:
             return err
@@ -2081,19 +2081,19 @@ def CdsAdapterCS01(adapter):
             for m in val:
                 if hasattr(m, 'metric_name') and str(m.metric_name) == 'CS01':
                     return float(getattr(m, 'value', 0))
-        return "#CDS: 无 CS01 结果。请先确保 NPV 可计算：1) TradeDate/MaturityDate/ValuationDate 有效；2) ValuationDate <= MaturityDate；3) 已设置 CreditCurve、YieldCurve"
+        return "#CDS: no CS01 result. Ensure NPV can be calculated: 1) TradeDate/MaturityDate/ValuationDate are valid; 2) ValuationDate <= MaturityDate; 3) CreditCurve and YieldCurve are set"
     except BaseException as e:
         if 'ObjectCacheKeyError' in type(e).__name__ or 'ObjectCacheKey' in str(e):
-            return "#CDS: adapter 对象缓存无效，请检查 McpCdsAdapter 参数区域或重新计算"
+            return "#CDS: adapter object cache is invalid; check the McpCdsAdapter parameter range or recalculate"
         return f"#CDS: {e}"
 
 
 def _cds_metric_udf(adapter, metric_name, from_valuation=True, from_attribution=False):
     """通用 CDS 指标 UDF 实现"""
     if adapter is None:
-        return f"#CDS: adapter 为空"
+        return f"#CDS: adapter is empty"
     if isinstance(adapter, str):
-        return "#CDS: adapter 创建失败或对象缓存无效"
+        return "#CDS: failed to create adapter or object cache is invalid"
     err = _check_cds_adapter(adapter)
     if err:
         return err
@@ -2104,8 +2104,8 @@ def _cds_metric_udf(adapter, metric_name, from_valuation=True, from_attribution=
     if v is not None:
         return float(v)
     if from_attribution and "ATTRIBUTION" in metric_name:
-        return f"#CDS: 无 {metric_name} 结果。归因需在 McpCdsAdapter 中配置 PrevYieldCurve、PrevCreditCurve（T-1 曲线），并重建 mcp 使 MCdsAdapter 含 setPrevYieldCurve/setPrevCreditCurve"
-    return f"#CDS: 无 {metric_name} 结果"
+        return f"#CDS: no {metric_name} result. Attribution requires PrevYieldCurve and PrevCreditCurve (T-1 curves) on McpCdsAdapter; rebuild mcp so MCdsAdapter has setPrevYieldCurve/setPrevCreditCurve"
+    return f"#CDS: no {metric_name} result"
 
 
 @xl_func(macro=False, recalc_on_open=True)
@@ -2165,7 +2165,7 @@ def CdsAdapterAttribution(adapter, metric):
     }
     mname = metric_map.get(str(metric).strip() if metric else "", "")
     if not mname:
-        return "#CDS: metric 需为 Carry/Rates/Credit/Total/Residual 之一"
+        return "#CDS: metric must be one of Carry/Rates/Credit/Total/Residual"
     return _cds_metric_udf(adapter, mname, from_valuation=False, from_attribution=True)
 
 
@@ -2176,7 +2176,7 @@ def CdsAdapterAttributionAll(adapter):
     """CDS Adapter 全部归因指标，返回 2D 数组 [metric_name, value]"""
     try:
         if adapter is None:
-            return [["#CDS: adapter 为空"]]
+            return [["#CDS: adapter is empty"]]
         err = _check_cds_adapter(adapter)
         if err:
             return [[err]]
@@ -2186,7 +2186,7 @@ def CdsAdapterAttributionAll(adapter):
         obj = _get_cds_adapter_obj(adapter)
         results = obj.calculateAttributionMetrics()
         if not results:
-            return [["#CDS: 无归因结果"]]
+            return [["#CDS: no attribution result"]]
         out = []
         for m in results:
             name = getattr(m, 'metric_name', None) or getattr(m, 'description', '') or ''
@@ -2204,7 +2204,7 @@ def CdsAdapterDV01Tenor(adapter, tenor):
     """CDS Adapter 按 tenor 的 DV01，tenor 如 0.5Y, 1Y, 3Y, 5Y, 10Y"""
     try:
         if adapter is None:
-            return "#CDS: adapter 为空"
+            return "#CDS: adapter is empty"
         err = _check_cds_adapter(adapter)
         if err:
             return err
@@ -2214,17 +2214,17 @@ def CdsAdapterDV01Tenor(adapter, tenor):
         obj = _get_cds_adapter_obj(adapter)
         results = obj.calculateRiskMetrics()
         if not results:
-            return "#CDS: 无风险指标"
+            return "#CDS: no risk metrics"
         t = str(tenor).strip().upper() if tenor else ""
         if not t:
-            return "#CDS: tenor 不能为空"
+            return "#CDS: tenor cannot be empty"
         for m in results:
             desc = getattr(m, 'description', '') or ''
             bucket = getattr(m, 'bucket_spec', None)
             bucket_tenor = bucket.tenor if bucket and hasattr(bucket, 'tenor') else ''
             if 'DV01' in desc and (t in desc or t in bucket_tenor):
                 return float(getattr(m, 'value', 0))
-        return f"#CDS: 无 DV01 {tenor}"
+        return f"#CDS: no DV01 {tenor}"
     except BaseException as e:
         return f"#CDS: {e}"
 
@@ -2240,7 +2240,7 @@ def CdsAdapterSchedule(adapter, fields=None):
     """
     try:
         if adapter is None:
-            return [["#CDS: adapter 为空"]]
+            return [["#CDS: adapter is empty"]]
         err = _check_cds_adapter(adapter)
         if err:
             return [[err]]
@@ -2249,10 +2249,10 @@ def CdsAdapterSchedule(adapter, fields=None):
             return [[npv_err]]
         obj = _get_cds_adapter_obj(adapter)
         if not hasattr(obj, 'calculateCdsSchedule'):
-            return [["#CDS: adapter 不支持 calculateCdsSchedule"]]
+            return [["#CDS: adapter does not support calculateCdsSchedule"]]
         rows = obj.calculateCdsSchedule()
         if not rows:
-            return [["#CDS: 无 Schedule 数据"]]
+            return [["#CDS: no Schedule data"]]
         default_fields = [
             "pay_date", "acc_start", "acc_end", "acc_days", "alpha_full", "alpha_rem",
             "days_to_pay", "t_years", "df", "Q", "Q_prev", "dQ", "prem_factor", "prot_factor", "fee_amount"
@@ -2282,7 +2282,7 @@ def CdsAdapterCS01Tenor(adapter, tenor=None):
     if tenor:
         try:
             if adapter is None:
-                return "#CDS: adapter 为空"
+                return "#CDS: adapter is empty"
             err = _check_cds_adapter(adapter)
             if err:
                 return err
@@ -2296,7 +2296,7 @@ def CdsAdapterCS01Tenor(adapter, tenor=None):
                 desc = getattr(m, 'description', '') or ''
                 if 'CS01' in desc and t in desc:
                     return float(getattr(m, 'value', 0))
-            return f"#CDS: 无 CS01 {tenor}"
+            return f"#CDS: no CS01 {tenor}"
         except BaseException as e:
             return f"#CDS: {e}"
     return CdsAdapterCS01(adapter)
@@ -2317,16 +2317,16 @@ def ClnAdapterDV01(adapter):
     """CLN Adapter DV01"""
     try:
         if adapter is None:
-            return "#CLN: adapter 为空"
+            return "#CLN: adapter is empty"
         obj = _get_cln_adapter_obj(adapter)
         if not hasattr(obj, 'calculateRiskMetrics'):
-            return "#CLN: 无效的 adapter"
+            return "#CLN: invalid adapter"
         results = obj.calculateRiskMetrics()
         for m in results:
             name = getattr(m, 'metric_name', None) or getattr(m, 'description', '')
             if name and 'DV01' in str(name):
                 return float(getattr(m, 'value', 0))
-        return "#CLN: 无 DV01"
+        return "#CLN: no DV01"
     except BaseException as e:
         return f"#CLN: {e}"
 
@@ -2337,16 +2337,16 @@ def ClnAdapterCS01(adapter):
     """CLN Adapter CS01"""
     try:
         if adapter is None:
-            return "#CLN: adapter 为空"
+            return "#CLN: adapter is empty"
         obj = _get_cln_adapter_obj(adapter)
         if not hasattr(obj, 'calculateRiskMetrics'):
-            return "#CLN: 无效的 adapter"
+            return "#CLN: invalid adapter"
         results = obj.calculateRiskMetrics()
         for m in results:
             name = getattr(m, 'metric_name', None) or getattr(m, 'description', '')
             if name and 'CS01' in str(name):
                 return float(getattr(m, 'value', 0))
-        return "#CLN: 无 CS01"
+        return "#CLN: no CS01"
     except BaseException as e:
         return f"#CLN: {e}"
 
@@ -2383,16 +2383,16 @@ def ClnAdapterAttribution(adapter, metric):
     }
     mname = metric_map.get(str(metric).strip() if metric else "", "")
     if not mname:
-        return "#CLN: metric 需为 Carry/Rates/Credit/Total/Residual 之一"
+        return "#CLN: metric must be one of Carry/Rates/Credit/Total/Residual"
     try:
         if adapter is None:
-            return "#CLN: adapter 为空"
+            return "#CLN: adapter is empty"
         if isinstance(adapter, str):
-            return "#CLN: adapter 创建失败"
+            return "#CLN: failed to create adapter"
         v = _get_cln_attribution_value(adapter, mname)
         if v is not None:
             return float(v)
-        return "#CLN: 无归因(需设置 PrevYieldCurve/PrevCreditCurve)"
+        return "#CLN: no attribution (set PrevYieldCurve/PrevCreditCurve)"
     except BaseException as e:
         return f"#CLN: {e}"
 
@@ -2407,9 +2407,9 @@ def ClnAdapterAttributionLadder(adapter, step):
     """
     try:
         if adapter is None:
-            return "#CLN: adapter 为空"
+            return "#CLN: adapter is empty"
         if isinstance(adapter, str):
-            return "#CLN: adapter 创建失败"
+            return "#CLN: failed to create adapter"
         obj = _get_cln_adapter_obj(adapter)
         npv_results = obj.calculateValuationMetrics() if hasattr(obj, 'calculateValuationMetrics') else []
         npv = None
@@ -2418,11 +2418,11 @@ def ClnAdapterAttributionLadder(adapter, step):
             if v is not None:
                 npv = float(v)
         if npv is None:
-            return "#CLN: 无 NPV"
+            return "#CLN: no NPV"
         attr = obj.calculateAttributionMetrics()
         if not attr:
             hint = "若已配置 PrevYieldCurve/PrevCreditCurve 仍报错，请重建 mcp（mcpPortLib 需含 MClnAdapter.setPrevYieldCurve/setPrevCreditCurve）"
-            return f"#CLN: 无归因(需 PrevYieldCurve/PrevCreditCurve)。{hint}"
+            return f"#CLN: no attribution (requires PrevYieldCurve/PrevCreditCurve). {hint}"
         d = {}
         for m in attr:
             nm = getattr(m, 'metric_name', None) or ''
@@ -2447,7 +2447,7 @@ def ClnAdapterAttributionLadder(adapter, step):
         s = str(step).strip() if step else ""
         if s in step_map:
             return step_map[s]
-        return f"#CLN: step 需为 PV_t0/PV_theta/PV_rates/PV_issuer/PV_ref/PV_t1"
+        return f"#CLN: step must be PV_t0/PV_theta/PV_rates/PV_issuer/PV_ref/PV_t1"
     except BaseException as e:
         return f"#CLN: {e}"
 
@@ -2467,14 +2467,14 @@ def CdsAdapterCashflows(adapter, useYieldCurve=True, fields=None):
     """
     try:
         if adapter is None:
-            return [["#CDS: adapter 为空"]]
+            return [["#CDS: adapter is empty"]]
         if isinstance(adapter, str):
-            return [["#CDS: adapter 创建失败或对象缓存无效，请检查 McpCdsAdapter 参数区域或重新计算"]]
+            return [["#CDS: failed to create adapter or object cache is invalid; check the McpCdsAdapter parameter range or recalculate"]]
         err = _check_cds_adapter(adapter)
         if err:
             return [[err]]
         if not hasattr(adapter, 'calculateCashflows'):
-            return [["#CDS: 无效的 adapter 对象"]]
+            return [["#CDS: invalid adapter object"]]
         # 预检查：NPV 不可计算时 calculateCashflows 会 crash
         npv_err = _check_cds_npv_ready(adapter)
         if npv_err:
@@ -2526,10 +2526,10 @@ def CdsAdapterCashflows(adapter, useYieldCurve=True, fields=None):
                         obj.append(v if v is not None else "")
                     result.append(obj)
                 return result
-        return [["#CDS: 无现金流"]]
+        return [["#CDS: no cashflow"]]
     except BaseException as e:
         if 'ObjectCacheKeyError' in type(e).__name__ or 'ObjectCacheKey' in str(e):
-            return [["#CDS: adapter 对象缓存无效，请检查 McpCdsAdapter 参数区域或重新计算"]]
+            return [["#CDS: adapter object cache is invalid; check the McpCdsAdapter parameter range or recalculate"]]
         return [[f"#CDS: {e}"]]
 
 
@@ -2543,17 +2543,17 @@ def LoanAndDeposAdapterNPV(adapter):
     """
     try:
         if adapter is None:
-            return "#DEPO: adapter 为空"
+            return "#DEPO: adapter is empty"
         if isinstance(adapter, str):
-            return "#DEPO: adapter 创建失败或对象缓存无效"
+            return "#DEPO: failed to create adapter or object cache is invalid"
         if not hasattr(adapter, 'calculateValuationMetrics'):
-            return "#DEPO: 无效的 adapter 对象"
+            return "#DEPO: invalid adapter object"
         val = adapter.calculateValuationMetrics()
         if val and len(val) > 0:
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-        return "#DEPO: 无结果。请确保已设置 ValuationCurve"
+        return "#DEPO: no result. Ensure ValuationCurve is set"
     except BaseException as e:
         return f"#DEPO: {e}"
 
@@ -2569,11 +2569,11 @@ def LoanAndDeposAdapterCashflows(adapter, useYieldCurve=True, fields=None):
     """
     try:
         if adapter is None:
-            return [["#DEPO: adapter 为空"]]
+            return [["#DEPO: adapter is empty"]]
         if isinstance(adapter, str):
-            return [["#DEPO: adapter 创建失败或对象缓存无效"]]
+            return [["#DEPO: failed to create adapter or object cache is invalid"]]
         if not hasattr(adapter, 'calculateCashflows'):
-            return [["#DEPO: 无效的 adapter 对象"]]
+            return [["#DEPO: invalid adapter object"]]
         flows = adapter.calculateCashflows(useYieldCurve)
         if flows and len(flows) > 0:
             rows = []
@@ -2622,7 +2622,7 @@ def LoanAndDeposAdapterCashflows(adapter, useYieldCurve=True, fields=None):
                         obj.append(v if v is not None else "")
                     result.append(obj)
                 return result
-        return [["#DEPO: 无现金流"]]
+        return [["#DEPO: no cashflow"]]
     except BaseException as e:
         return [[f"#DEPO: {e}"]]
 
@@ -2637,17 +2637,17 @@ def BillDiscountAdapterNPV(adapter):
     """
     try:
         if adapter is None:
-            return "#BILL: adapter 为空"
+            return "#BILL: adapter is empty"
         if isinstance(adapter, str):
-            return "#BILL: adapter 创建失败或对象缓存无效"
+            return "#BILL: failed to create adapter or object cache is invalid"
         if not hasattr(adapter, 'calculateValuationMetrics'):
-            return "#BILL: 无效的 adapter 对象"
+            return "#BILL: invalid adapter object"
         val = adapter.calculateValuationMetrics()
         if val and len(val) > 0:
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-        return "#BILL: 无结果。请确保已设置 ValuationCurve"
+        return "#BILL: no result. Ensure ValuationCurve is set"
     except BaseException as e:
         return f"#BILL: {e}"
 
@@ -2663,11 +2663,11 @@ def BillDiscountAdapterCashflows(adapter, useYieldCurve=True, fields=None):
     """
     try:
         if adapter is None:
-            return [["#BILL: adapter 为空"]]
+            return [["#BILL: adapter is empty"]]
         if isinstance(adapter, str):
-            return [["#BILL: adapter 创建失败或对象缓存无效"]]
+            return [["#BILL: failed to create adapter or object cache is invalid"]]
         if not hasattr(adapter, 'calculateCashflows'):
-            return [["#BILL: 无效的 adapter 对象"]]
+            return [["#BILL: invalid adapter object"]]
         flows = adapter.calculateCashflows(useYieldCurve)
         if flows and len(flows) > 0:
             rows = []
@@ -2700,7 +2700,7 @@ def BillDiscountAdapterCashflows(adapter, useYieldCurve=True, fields=None):
                         obj.append(v if v is not None else "")
                     result.append(obj)
                 return result
-        return [["#BILL: 无现金流"]]
+        return [["#BILL: no cashflow"]]
     except BaseException as e:
         return [[f"#BILL: {e}"]]
 
@@ -2715,17 +2715,17 @@ def BillRepoAdapterNPV(adapter):
     """
     try:
         if adapter is None:
-            return "#BILL_REPO: adapter 为空"
+            return "#BILL_REPO: adapter is empty"
         if isinstance(adapter, str):
-            return "#BILL_REPO: adapter 创建失败或对象缓存无效"
+            return "#BILL_REPO: failed to create adapter or object cache is invalid"
         if not hasattr(adapter, 'calculateValuationMetrics'):
-            return "#BILL_REPO: 无效的 adapter 对象"
+            return "#BILL_REPO: invalid adapter object"
         val = adapter.calculateValuationMetrics()
         if val and len(val) > 0:
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-        return "#BILL_REPO: 无结果。请确保已设置 DiscountCurve"
+        return "#BILL_REPO: no result. Ensure DiscountCurve is set"
     except BaseException as e:
         return f"#BILL_REPO: {e}"
 
@@ -2741,11 +2741,11 @@ def BillRepoAdapterCashflows(adapter, useYieldCurve=True, fields=None):
     """
     try:
         if adapter is None:
-            return [["#BILL_REPO: adapter 为空"]]
+            return [["#BILL_REPO: adapter is empty"]]
         if isinstance(adapter, str):
-            return [["#BILL_REPO: adapter 创建失败或对象缓存无效"]]
+            return [["#BILL_REPO: failed to create adapter or object cache is invalid"]]
         if not hasattr(adapter, 'calculateCashflows'):
-            return [["#BILL_REPO: 无效的 adapter 对象"]]
+            return [["#BILL_REPO: invalid adapter object"]]
         flows = adapter.calculateCashflows(useYieldCurve)
         if flows and len(flows) > 0:
             rows = []
@@ -2778,7 +2778,7 @@ def BillRepoAdapterCashflows(adapter, useYieldCurve=True, fields=None):
                         obj.append(v if v is not None else "")
                     result.append(obj)
                 return result
-        return [["#BILL_REPO: 无现金流"]]
+        return [["#BILL_REPO: no cashflow"]]
     except BaseException as e:
         return [[f"#BILL_REPO: {e}"]]
 
@@ -2793,17 +2793,17 @@ def FRAAdapterNPV(adapter):
     """
     try:
         if adapter is None:
-            return "#FRA: adapter 为空"
+            return "#FRA: adapter is empty"
         if isinstance(adapter, str):
-            return "#FRA: adapter 创建失败或对象缓存无效"
+            return "#FRA: failed to create adapter or object cache is invalid"
         if not hasattr(adapter, 'calculateValuationMetrics'):
-            return "#FRA: 无效的 adapter 对象"
+            return "#FRA: invalid adapter object"
         val = adapter.calculateValuationMetrics()
         if val and len(val) > 0:
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-        return "#FRA: 无结果。请确保已设置 ValuationCurve"
+        return "#FRA: no result. Ensure ValuationCurve is set"
     except BaseException as e:
         return f"#FRA: {e}"
 
@@ -2819,11 +2819,11 @@ def FRAAdapterCashflows(adapter, useYieldCurve=True, fields=None):
     """
     try:
         if adapter is None:
-            return [["#FRA: adapter 为空"]]
+            return [["#FRA: adapter is empty"]]
         if isinstance(adapter, str):
-            return [["#FRA: adapter 创建失败或对象缓存无效"]]
+            return [["#FRA: failed to create adapter or object cache is invalid"]]
         if not hasattr(adapter, 'calculateCashflows'):
-            return [["#FRA: 无效的 adapter 对象"]]
+            return [["#FRA: invalid adapter object"]]
         flows = adapter.calculateCashflows(useYieldCurve)
         if flows and len(flows) > 0:
             rows = []
@@ -2869,7 +2869,7 @@ def FRAAdapterCashflows(adapter, useYieldCurve=True, fields=None):
                         obj.append(v if v is not None else "")
                     result.append(obj)
                 return result
-        return [["#FRA: 无现金流"]]
+        return [["#FRA: no cashflow"]]
     except BaseException as e:
         return [[f"#FRA: {e}"]]
 
@@ -2884,17 +2884,17 @@ def BondLendingAdapterNPV(adapter):
     """
     try:
         if adapter is None:
-            return "#BL: adapter 为空"
+            return "#BL: adapter is empty"
         if isinstance(adapter, str):
-            return "#BL: adapter 创建失败或对象缓存无效"
+            return "#BL: failed to create adapter or object cache is invalid"
         if not hasattr(adapter, 'calculateValuationMetrics'):
-            return "#BL: 无效的 adapter 对象"
+            return "#BL: invalid adapter object"
         val = adapter.calculateValuationMetrics()
         if val and len(val) > 0:
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-        return "#BL: 无结果。请确保已设置 ValuationCurve 和 DiscountCurve"
+        return "#BL: no result. Ensure ValuationCurve and DiscountCurve are set"
     except BaseException as e:
         return f"#BL: {e}"
 
@@ -2910,11 +2910,11 @@ def BondLendingAdapterCashflows(adapter, useYieldCurve=True, fields=None):
     """
     try:
         if adapter is None:
-            return [["#BL: adapter 为空"]]
+            return [["#BL: adapter is empty"]]
         if isinstance(adapter, str):
-            return [["#BL: adapter 创建失败或对象缓存无效"]]
+            return [["#BL: failed to create adapter or object cache is invalid"]]
         if not hasattr(adapter, 'calculateCashflows'):
-            return [["#BL: 无效的 adapter 对象"]]
+            return [["#BL: invalid adapter object"]]
         flows = adapter.calculateCashflows(useYieldCurve)
         if flows and len(flows) > 0:
             rows = []
@@ -2960,7 +2960,7 @@ def BondLendingAdapterCashflows(adapter, useYieldCurve=True, fields=None):
                         obj.append(v if v is not None else "")
                     result.append(obj)
                 return result
-        return [["#BL: 无现金流"]]
+        return [["#BL: no cashflow"]]
     except BaseException as e:
         return [[f"#BL: {e}"]]
 
@@ -2975,17 +2975,17 @@ def CommodityLendingAdapterNPV(adapter):
     """
     try:
         if adapter is None:
-            return "#CL: adapter 为空"
+            return "#CL: adapter is empty"
         if isinstance(adapter, str):
-            return "#CL: adapter 创建失败或对象缓存无效"
+            return "#CL: failed to create adapter or object cache is invalid"
         if not hasattr(adapter, 'calculateValuationMetrics'):
-            return "#CL: 无效的 adapter 对象"
+            return "#CL: invalid adapter object"
         val = adapter.calculateValuationMetrics()
         if val and len(val) > 0:
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-        return "#CL: 无结果。请确保已设置 DiscountCurve"
+        return "#CL: no result. Ensure DiscountCurve is set"
     except BaseException as e:
         return f"#CL: {e}"
 
@@ -3001,11 +3001,11 @@ def CommodityLendingAdapterCashflows(adapter, useYieldCurve=True, fields=None):
     """
     try:
         if adapter is None:
-            return [["#CL: adapter 为空"]]
+            return [["#CL: adapter is empty"]]
         if isinstance(adapter, str):
-            return [["#CL: adapter 创建失败或对象缓存无效"]]
+            return [["#CL: failed to create adapter or object cache is invalid"]]
         if not hasattr(adapter, 'calculateCashflows'):
-            return [["#CL: 无效的 adapter 对象"]]
+            return [["#CL: invalid adapter object"]]
         flows = adapter.calculateCashflows(useYieldCurve)
         if flows and len(flows) > 0:
             rows = []
@@ -3051,7 +3051,7 @@ def CommodityLendingAdapterCashflows(adapter, useYieldCurve=True, fields=None):
                         obj.append(v if v is not None else "")
                     result.append(obj)
                 return result
-        return [["#CL: 无现金流"]]
+        return [["#CL: no cashflow"]]
     except BaseException as e:
         return [[f"#CL: {e}"]]
 
@@ -3066,17 +3066,17 @@ def WMProductAdapterNPV(adapter):
     """
     try:
         if adapter is None:
-            return "#WM: adapter 为空"
+            return "#WM: adapter is empty"
         if isinstance(adapter, str):
-            return "#WM: adapter 创建失败或对象缓存无效"
+            return "#WM: failed to create adapter or object cache is invalid"
         if not hasattr(adapter, 'calculateValuationMetrics'):
-            return "#WM: 无效的 adapter 对象"
+            return "#WM: invalid adapter object"
         val = adapter.calculateValuationMetrics()
         if val and len(val) > 0:
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-        return "#WM: 无结果。请确保 FundAdapter 已设置 DiscountCurve"
+        return "#WM: no result. Ensure FundAdapter has DiscountCurve set"
     except BaseException as e:
         return f"#WM: {e}"
 
@@ -3092,11 +3092,11 @@ def WMProductAdapterCashflows(adapter, useYieldCurve=True, fields=None):
     """
     try:
         if adapter is None:
-            return [["#WM: adapter 为空"]]
+            return [["#WM: adapter is empty"]]
         if isinstance(adapter, str):
-            return [["#WM: adapter 创建失败或对象缓存无效"]]
+            return [["#WM: failed to create adapter or object cache is invalid"]]
         if not hasattr(adapter, 'calculateCashflows'):
-            return [["#WM: 无效的 adapter 对象"]]
+            return [["#WM: invalid adapter object"]]
         flows = adapter.calculateCashflows(useYieldCurve)
         if flows and len(flows) > 0:
             rows = []
@@ -3142,7 +3142,7 @@ def WMProductAdapterCashflows(adapter, useYieldCurve=True, fields=None):
                         obj.append(v if v is not None else "")
                     result.append(obj)
                 return result
-        return [["#WM: 无现金流"]]
+        return [["#WM: no cashflow"]]
     except BaseException as e:
         return [[f"#WM: {e}"]]
 
@@ -3157,17 +3157,17 @@ def BasisSwapAdapterNPV(adapter):
     """
     try:
         if adapter is None:
-            return "#BS: adapter 为空"
+            return "#BS: adapter is empty"
         if isinstance(adapter, str):
-            return "#BS: adapter 创建失败或对象缓存无效"
+            return "#BS: failed to create adapter or object cache is invalid"
         if not hasattr(adapter, 'calculateValuationMetrics'):
-            return "#BS: 无效的 adapter 对象"
+            return "#BS: invalid adapter object"
         val = adapter.calculateValuationMetrics()
         if val and len(val) > 0:
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-        return "#BS: 无结果。请确保已设置 4 条曲线"
+        return "#BS: no result. Ensure all 4 curves are set"
     except BaseException as e:
         return f"#BS: {e}"
 
@@ -3183,11 +3183,11 @@ def BasisSwapAdapterCashflows(adapter, useYieldCurve=True, fields=None):
     """
     try:
         if adapter is None:
-            return [["#BS: adapter 为空"]]
+            return [["#BS: adapter is empty"]]
         if isinstance(adapter, str):
-            return [["#BS: adapter 创建失败或对象缓存无效"]]
+            return [["#BS: failed to create adapter or object cache is invalid"]]
         if not hasattr(adapter, 'calculateCashflows'):
-            return [["#BS: 无效的 adapter 对象"]]
+            return [["#BS: invalid adapter object"]]
         flows = adapter.calculateCashflows(useYieldCurve)
         if flows and len(flows) > 0:
             rows = []
@@ -3233,7 +3233,7 @@ def BasisSwapAdapterCashflows(adapter, useYieldCurve=True, fields=None):
                         obj.append(v if v is not None else "")
                     result.append(obj)
                 return result
-        return [["#BS: 无现金流"]]
+        return [["#BS: no cashflow"]]
     except BaseException as e:
         return [[f"#BS: {e}"]]
 
@@ -3248,17 +3248,17 @@ def BondForwardAdapterNPV(adapter):
     """
     try:
         if adapter is None:
-            return "#BF: adapter 为空"
+            return "#BF: adapter is empty"
         if isinstance(adapter, str):
-            return "#BF: adapter 创建失败或对象缓存无效"
+            return "#BF: failed to create adapter or object cache is invalid"
         if not hasattr(adapter, 'calculateValuationMetrics'):
-            return "#BF: 无效的 adapter 对象"
+            return "#BF: invalid adapter object"
         val = adapter.calculateValuationMetrics()
         if val and len(val) > 0:
             v = getattr(val[0], 'value', None)
             if v is not None:
                 return float(v)
-        return "#BF: 无结果。请确保已设置 DiscountCurve"
+        return "#BF: no result. Ensure DiscountCurve is set"
     except BaseException as e:
         return f"#BF: {e}"
 
@@ -3274,11 +3274,11 @@ def BondForwardAdapterCashflows(adapter, useYieldCurve=True, fields=None):
     """
     try:
         if adapter is None:
-            return [["#BF: adapter 为空"]]
+            return [["#BF: adapter is empty"]]
         if isinstance(adapter, str):
-            return [["#BF: adapter 创建失败或对象缓存无效"]]
+            return [["#BF: failed to create adapter or object cache is invalid"]]
         if not hasattr(adapter, 'calculateCashflows'):
-            return [["#BF: 无效的 adapter 对象"]]
+            return [["#BF: invalid adapter object"]]
         flows = adapter.calculateCashflows(useYieldCurve)
         if flows and len(flows) > 0:
             rows = []
@@ -3324,6 +3324,6 @@ def BondForwardAdapterCashflows(adapter, useYieldCurve=True, fields=None):
                         obj.append(v if v is not None else "")
                     result.append(obj)
                 return result
-        return [["#BF: 无现金流"]]
+        return [["#BF: no cashflow"]]
     except BaseException as e:
         return [[f"#BF: {e}"]]

@@ -45,7 +45,13 @@ from mcp.utils.excel_utils import (
     pf_date,
     to_excel_ordinal,
 )
-from mcp.utils.workbook_path import resolve_data_path
+from mcp.utils.workbook_path import (
+    apply_excel_sdp_trace_directory,
+    bind_sdp_generate_report,
+    caller_external_address,
+    resolve_data_path,
+    udf_trace,
+)
 from mcp.utils.mcp_utils import (
     as_2d_array,
     as_array,
@@ -57,39 +63,25 @@ from mcp.xscript.xs_tools import XssLVPlot, XssMCPlot
 
 
 def _resolve_trace_file_name(trace_file_name):
-    """Resolve relative trace paths returned by xScript/LocalVol into an existing file."""
-    if not trace_file_name:
-        return "", []
-    trace_file_name = str(trace_file_name).replace("\\", os.sep).replace("/", os.sep)
-    if trace_file_name.startswith("file:" + os.sep + os.sep + os.sep):
-        trace_file_name = trace_file_name[8:]
-    elif trace_file_name.startswith("file:" + os.sep + os.sep):
-        trace_file_name = trace_file_name[7:]
+    from mcp.utils.workbook_path import resolve_xscript_trace_file
 
-    candidates = []
-    if os.path.isabs(trace_file_name):
-        candidates.append(trace_file_name)
-    else:
-        module_root = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-        candidates.extend([
-            os.path.abspath(trace_file_name),
-            os.path.join(os.getcwd(), trace_file_name),
-            os.path.join(os.path.expanduser("~"), "Documents", trace_file_name),
-            os.path.join(module_root, trace_file_name),
-        ])
+    return resolve_xscript_trace_file(trace_file_name)
 
-    seen = set()
-    unique_candidates = []
-    for candidate in candidates:
-        normalized = os.path.normpath(candidate)
-        key = normalized.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        unique_candidates.append(normalized)
-        if os.path.isfile(normalized):
-            return normalized, unique_candidates
-    return os.path.normpath(trace_file_name), unique_candidates
+
+def _latest_xscript_sibling(path):
+    """If exact {id}_xscript.md is missing, take newest {id}*_xscript.md."""
+    import glob
+    directory, name = os.path.split(path)
+    if not directory or not name.endswith("_xscript.md"):
+        return ""
+    stem = name[:-len("_xscript.md")]
+    if not stem:
+        return ""
+    matches = [p for p in glob.glob(os.path.join(directory, stem + "*_xscript.md")) if os.path.isfile(p)]
+    if not matches:
+        return ""
+    matches.sort(key=os.path.getmtime, reverse=True)
+    return os.path.normpath(matches[0])
 
 
 def _xss_result_by_variable(obj, variable):
@@ -181,8 +173,7 @@ def McpModelDef(args):
     args: Key-value/table parameters passed from Excel as 2D region.
     Returns: xsst.McpModelDef object (for reference by other functions).
     """
-    xl = xl_app()
-    addr = xl.Caller.GetAddress(External=True)
+    addr = caller_external_address()
     return xsst.McpModelDef(args, addr)
 
 
@@ -199,8 +190,7 @@ def McpStructureDef(packageName, structure, schedule1, payoff, schedule2):
     structure/scheduleX/payoff: 2D parameter regions from Excel
     Returns: Structure definition object for subsequent product instantiation.
     """
-    xl = xl_app()
-    addr = xl.Caller.GetAddress(External=True)
+    addr = caller_external_address()
     stt_def = xsst.McpStructureDef(packageName, structure, [schedule1, schedule2], payoff, addr)
     return stt_def
 
@@ -210,8 +200,7 @@ def McpModelClear():
     """
     清除当前单元格地址对应的模型缓存（便于刷新）。
     """
-    xl = xl_app()
-    addr = xl.Caller.GetAddress(External=True)
+    addr = caller_external_address()
     arr = xsst.stt_def_manager.model().clear(addr)
     return f"Clear: {arr}"
 
@@ -221,8 +210,7 @@ def McpStructureClear():
     """
     清除当前单元格地址对应的结构定义缓存。
     """
-    xl = xl_app()
-    addr = xl.Caller.GetAddress(External=True)
+    addr = caller_external_address()
     arr = xsst.stt_def_manager.stt().clear(addr)
     return f"Clear: {arr}"
 
@@ -541,7 +529,7 @@ def XssGammaDiff1Pct(obj, isAmount=True):
     try:
         if hasattr(obj, 'GammaDiff1Pct'):
             return obj.GammaDiff1Pct(isAmount)
-        return f"Object does not have GammaDiff1Pct method: {type(obj).__name__}（请重新编译 _mcp）"
+        return f"Object does not have GammaDiff1Pct method: {type(obj).__name__} (please rebuild _mcp)"
     except Exception as e:
         return f"XssGammaDiff1Pct except: {e}"
 
@@ -556,7 +544,7 @@ def XssGammaDiff1PctCash(obj, isAmount=True):
     try:
         if hasattr(obj, 'GammaDiff1PctCash'):
             return obj.GammaDiff1PctCash(isAmount)
-        return f"Object does not have GammaDiff1PctCash method: {type(obj).__name__}（请重新编译 _mcp）"
+        return f"Object does not have GammaDiff1PctCash method: {type(obj).__name__} (please rebuild _mcp)"
     except Exception as e:
         return f"XssGammaDiff1PctCash except: {e}"
 
@@ -931,38 +919,21 @@ def XssEventDates(obj):
 
 
 @xl_func(macro=False, recalc_on_open=False)
-@xl_arg("obj", "object")
+@xl_arg("obj", "var")
 @xl_arg("dependency", "var")
-def HmReport(obj, dependency=None):
+@xl_arg("generate", "var")
+def HmReport(obj, dependency=None, generate=False):
     """
-    根据 Trace 文件类型，生成 LocalVol 或 MC 的 HTML 报告。
-    注意：此函数返回 HTML 字符串，供前端嵌入渲染。
-    支持中文内容的Markdown文件。
-    dependency 可传入 XssPrice/XssPV 单元格，强制 Excel 先完成定价再生成报告。
+    根据已有 Trace 文件生成 LocalVol 或 MC 的 HTML 报告（默认带图）。
+
+    dependency：可传入定价单元格，只用于控制计算顺序。
+    第三参：
+      留空      —— 已有 md 转成带图 HTML（Agg，同步）
+      "generate"—— 按需先写 md，再出带图 HTML
+      "noplots" —— 只转 HTML，不画图
     """
-    traceFileName = obj.GetTraceFileName()
-    if not traceFileName:
-        return ""
-    try:
-        resolvedTraceFileName, candidates = _resolve_trace_file_name(traceFileName)
-        if not os.path.isfile(resolvedTraceFileName):
-            return (
-                f"HmReport file not generated: {traceFileName}. "
-                "如果这是 StructuredProduct/xScript 报告，请先计算 XssPrice 或 XssPV，"
-                "并可使用 =HmReport(productCell, priceCell) 让报告依赖价格单元格。"
-                f" Checked: {candidates}"
-            )
-        if "LocalVol" in resolvedTraceFileName:
-            return XssLVPlot.gen_html(resolvedTraceFileName)
-        return XssMCPlot.gen_html(resolvedTraceFileName)
-    except UnicodeDecodeError as e:
-        msg = f"HmReport UnicodeDecodeError: {traceFileName}, error: {e}"
-        logging.warning(msg, exc_info=True)
-        return msg
-    except Exception as e:
-        msg = f"HmReport exception: {traceFileName}, error: {type(e).__name__}: {e}"
-        logging.warning(msg, exc_info=True)
-        return msg
+    from mcp.utils.hm_report import run_hm_report
+    return run_hm_report(obj, generate)
 
 
 @xl_func(macro=False, recalc_on_open=False, auto_resize=True)
@@ -1366,7 +1337,7 @@ def _resolve_sdp_mc_spot(initial_price, additional_variable_values):
     return base
 
 
-@xl_func(macro=True, recalc_on_open=True)
+@xl_func(macro=False, recalc_on_open=True)
 @xl_arg("args1", "var[][]")
 @xl_arg("args2", "var[][]")
 @xl_arg("args3", "var[][]")
@@ -1404,8 +1375,16 @@ def McpStructuredDerivativeProduct(args1, args2, args3, args4, args5, fmt='VP|HD
     - additionalDateValues: 日期类型参数
     - additionalStringValues: 字符串类型参数
     """
+    try:
+        from mcp.utils.excel_open_gate import gate
+
+        g = gate("McpStructuredDerivativeProduct")
+        if g is not None:
+            return g
+    except Exception:
+        pass
     args = [args1, args2, args3, args4, args5]
-    
+
     # 定义固定参数字段
     # 注意：Spot 和 DiscountRateCurve 是同义词，会在解析后映射到 InitialPrice 和 DiscountCurve
     # LocalVol 和 Volatility 二选一：如果提供了 Volatility，则使用 double volatility 构造；否则使用 LocalVol 构造
@@ -1897,6 +1876,7 @@ def McpStructuredDerivativeProduct(args1, args2, args3, args4, args5, fmt='VP|HD
         
         # 创建MStructuredDerivativeProduct实例
         # 根据是否提供了 volatility 选择不同的构造函数
+        apply_excel_sdp_trace_directory(None)
         if use_volatility:
             discount_curve_for_vol = normalize_discount_curve_for_vol_ctor(discount_curve)
             # 使用 product_def（含 Excel ConfigPath 解析结果），勿用 product_name 触发 findProductConfigFile
@@ -1949,6 +1929,8 @@ def McpStructuredDerivativeProduct(args1, args2, args3, args4, args5, fmt='VP|HD
         # 将配置路径保存为对象属性，以便后续获取
         structured_product._config_path = config_path
         structured_product._sdp_creation_context = sdp_creation_context
+        apply_excel_sdp_trace_directory(structured_product)
+        bind_sdp_generate_report()
         
         # 直接返回MStructuredDerivativeProduct对象
         # 注意：C++端的StructuredDerivativeProduct需要实现所有XScriptStructure的方法

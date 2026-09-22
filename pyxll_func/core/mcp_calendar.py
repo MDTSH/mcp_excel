@@ -344,17 +344,28 @@ def _parse_holidays_full(path: str) -> Tuple[List[str], dict]:
 
 
 def _load_master(path):
+    try:
+        from mcp.utils.workbook_path import udf_trace
+    except Exception:
+        def udf_trace(msg):
+            pass
+    udf_trace("McpCalendarOf resolve raw=%s" % path)
     p = _resolve_holidays_path(path)
+    udf_trace("McpCalendarOf resolved=%s" % p)
     hit = _holidays_cache.get(p)
     if hit is not None:
+        udf_trace("McpCalendarOf cache hit")
         return hit
     if not os.path.isfile(p):
         raise FileNotFoundError(f"Holidays.txt not found: {p}")
+    udf_trace("McpCalendarOf parse holidays")
     codes, by_code = _parse_holidays_full(p)
     if not codes:
-        raise ValueError(f"Holidays.txt 未解析到任何 calendar code: {p}")
+        raise ValueError(f"Holidays.txt did not parse any calendar code: {p}")
+    udf_trace("McpCalendarOf construct master n=%s" % len(codes))
     # 直接走文件构造，等价于让 C++ 端把全部 code 一次装进去。
     master = mcp.wrapper.McpCalendar(json.dumps(codes), p, True)
+    udf_trace("McpCalendarOf master constructed")
     try:
         master._holidays_info_path = p  # 用于反向查缓存
         master._holidays_file_path = p
@@ -426,7 +437,7 @@ def _info_for_cal(cal):
     return _holidays_cache.get(p)
 
 
-@xl_func("var path, bool returnPath: var", macro=True, recalc_on_open=True)
+@xl_func("var path, bool returnPath: var", macro=False, recalc_on_open=True)
 def McpHolidaysLoad(path=None, returnPath=False):
     """一次性加载 Holidays.txt 主日历（带缓存）。
 
@@ -438,13 +449,21 @@ def McpHolidaysLoad(path=None, returnPath=False):
     if returnPath:
         return _resolve_holidays_path(path)
     try:
+        from mcp.utils.excel_open_gate import gate
+
+        g = gate("McpHolidaysLoad")
+        if g is not None:
+            return g
+    except Exception:
+        pass
+    try:
         return _load_master(path)["cal"]
     except Exception as e:
         logging.warning(f"McpHolidaysLoad failed: {e}", exc_info=True)
         return f"McpHolidaysLoad error: {e}"
 
 
-@xl_func("var path: str[]", macro=True, recalc_on_open=True, auto_resize=True)
+@xl_func("var path: str[]", macro=False, recalc_on_open=True, auto_resize=True)
 def McpHolidaysCodes(path=None):
     """返回 Holidays.txt 内全部 calendar code 列表（用于核对）。"""
     try:
@@ -466,7 +485,7 @@ def McpHolidaysReload(path=None):
     return True
 
 
-@xl_func("var arg1, var arg2: object", macro=True, recalc_on_open=True)
+@xl_func("var arg1, var arg2: object", macro=False, recalc_on_open=True)
 def McpCalendarOf(arg1, arg2=None):
     """从 Holidays.txt 中切出仅含指定币种/货币对的真实 McpCalendar（带缓存）。
 
@@ -485,32 +504,58 @@ def McpCalendarOf(arg1, arg2=None):
         Excel 单元格区域       多币种
     """
     try:
+        from mcp.utils.excel_open_gate import gate
+
+        g = gate("McpCalendarOf")
+        if g is not None:
+            return g
+    except Exception:
+        pass
+    try:
+        from mcp.utils.workbook_path import udf_trace
+    except Exception:
+        def udf_trace(msg):
+            pass
+    udf_trace("McpCalendarOf enter")
+    try:
         # 用法 1：第一参为已加载的 cal —— 反查所属缓存
         if isinstance(arg1, mcp.mcp.MCalendar):
+            udf_trace("McpCalendarOf usage1")
             info = _info_for_cal(arg1)
             codes = _normalize_ccys(arg2)
             if not codes:
+                udf_trace("McpCalendarOf leave invalid ccys")
                 return "Invalid ccys"
             if info is None:
+                udf_trace("McpCalendarOf leave no cache")
                 return ("masterCal not from McpHolidaysLoad/McpCalendarOf cache; "
-                        "请改用 =McpCalendarOf(ccys [, path]) 形式。")
+                        "use =McpCalendarOf(ccys [, path]).")
             known = set(info["codes"])
             miss = [c for c in codes if c not in known]
             if miss:
                 logging.warning(f"Holidays.txt 缺少 code: {miss}, file={info['path']}")
-            return _get_subcal(info, codes)
+            cal = _get_subcal(info, codes)
+            udf_trace("McpCalendarOf leave usage1")
+            return cal
 
         # 用法 2：第一参为 ccys
         codes = _normalize_ccys(arg1)
+        udf_trace("McpCalendarOf usage2 codes=%s path=%s" % (codes, arg2))
         if not codes:
+            udf_trace("McpCalendarOf leave invalid ccys")
             return "Invalid ccys"
+        udf_trace("McpCalendarOf load_master")
         info = _load_master(arg2)
+        udf_trace("McpCalendarOf master path=%s" % info.get("path"))
         known = set(info["codes"])
         miss = [c for c in codes if c not in known]
         if miss:
             logging.warning(f"Holidays.txt 缺少 code: {miss}, file={info['path']}")
-        return _get_subcal(info, codes)
+        cal = _get_subcal(info, codes)
+        udf_trace("McpCalendarOf leave usage2")
+        return cal
     except Exception as e:
+        udf_trace("McpCalendarOf except: %s" % e)
         logging.warning(f"McpCalendarOf failed: {e}", exc_info=True)
         return f"McpCalendarOf error: {e}"
 
